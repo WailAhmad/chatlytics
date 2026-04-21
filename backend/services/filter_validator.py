@@ -171,17 +171,23 @@ def apply_semantic_mappings(question: str, plan: Dict[str, Any], schema_profile:
         semantic_detected = True
         logger.info("Semantic comparison detected: peak vs off-peak")
     else:
-        for keyword, mapping in SEMANTIC_MAP.items():
-            if keyword in q_lower:
-                if "_hour_filter" in mapping:
-                    hour_info = mapping["_hour_filter"]
-                    plan.setdefault("_semantic_filters", []).append({
-                        "type": "hour_range",
-                        "hours": hour_info["values"],
-                        "label": keyword
-                    })
-                    semantic_detected = True
-                    logger.info(f"Semantic mapping applied: '{keyword}' → hour filter {hour_info['values']}")
+        # Only apply semantic hour mappings if hours_filter is NOT already set
+        # (the deterministic post-processor in query_planner handles specific phrases like "morning peak")
+        existing_hours = plan.get("filters", {}).get("hours_filter", [])
+        if not existing_hours:
+            for keyword, mapping in SEMANTIC_MAP.items():
+                if keyword in q_lower:
+                    if "_hour_filter" in mapping:
+                        hour_info = mapping["_hour_filter"]
+                        plan.setdefault("_semantic_filters", []).append({
+                            "type": "hour_range",
+                            "hours": hour_info["values"],
+                            "label": keyword
+                        })
+                        semantic_detected = True
+                        logger.info(f"Semantic mapping applied: '{keyword}' → hour filter {hour_info['values']}")
+        else:
+            logger.info(f"Skipped semantic hour mapping — deterministic hours_filter already set: {existing_hours}")
 
     # Strip status_code filters when semantic keywords are present
     if semantic_detected:

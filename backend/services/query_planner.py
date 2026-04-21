@@ -12,6 +12,29 @@ from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
+# ── Deterministic peak hours mapping ──
+# These business phrases are mapped to hour ranges AFTER the LLM plan,
+# ensuring they always work even if the LLM misses them.
+PEAK_HOURS_MAP = {
+    "morning peak": list(range(7, 11)),       # 07:00–10:00
+    "morning": list(range(6, 12)),             # 06:00–11:00
+    "evening peak": list(range(17, 22)),       # 17:00–21:00
+    "evening": list(range(17, 22)),            # 17:00–21:00
+    "night": list(range(22, 24)) + list(range(0, 6)),  # 22:00–05:00
+    "off-peak": list(range(22, 24)) + list(range(0, 7)),  # 22:00–06:00
+    "peak hours": list(range(7, 11)) + list(range(17, 22)),  # morning + evening
+    "business hours": list(range(8, 18)),      # 08:00–17:00
+    "afternoon": list(range(12, 17)),          # 12:00–16:00
+    "midday": list(range(11, 14)),             # 11:00–13:00
+    # Arabic equivalents
+    "ساعات الذروة الصباحية": list(range(7, 11)),
+    "ساعات الذروة المسائية": list(range(17, 22)),
+    "ساعات الذروة": list(range(7, 11)) + list(range(17, 22)),
+    "صباح": list(range(6, 12)),
+    "مساء": list(range(17, 22)),
+    "ليل": list(range(22, 24)) + list(range(0, 6)),
+}
+
 
 def _build_planner_prompt(schema_profile: Dict[str, Any], language: str, context_prompt: Optional[str] = None) -> str:
     schema_str = json.dumps(
@@ -54,7 +77,13 @@ You must classify the question into one of three execution paths:
 13. MAINTENANCE/DOWNTIME questions: set operation="maintenance", question_type="maintenance". NEVER use load_kwh/generation_kwh as metric for this.
 14. NET BALANCE/SURPLUS/DEFICIT questions: set operation="net_balance", question_type="net_balance". Leave metric null.
 15. PEAK + COMPANION (e.g. "load when generation peaked"): set operation="peak_with_companion", metric=primary peak metric, companion_metric=the secondary metric.
-16. If the user specifies an HOUR range ("peak hours", "evening", specific hours), populate filters.hours_filter with a list of integers (0-23).
+16. If the user specifies an HOUR range ("peak hours", "morning peak", "evening", specific hours), populate filters.hours_filter with a list of integers (0-23).
+    Examples:
+    - "morning peak hours" → hours_filter: [7, 8, 9, 10]
+    - "evening peak" → hours_filter: [17, 18, 19, 20, 21]
+    - "off-peak hours" → hours_filter: [22, 23, 0, 1, 2, 3, 4, 5, 6]
+    - "peak hours" → hours_filter: [7, 8, 9, 10, 17, 18, 19, 20, 21]
+    - "between 9am and 2pm" → hours_filter: [9, 10, 11, 12, 13]
 17. Return ONLY JSON.
 
 === TARGET JSON SCHEMA ===
@@ -138,6 +167,9 @@ def generate_query_plan(
         plan["filters"].setdefault("equals", {})
         plan.setdefault("group_by", [])
 
+        # ── Deterministic post-processing: peak hours ──
+        plan = _apply_hours_filter_rules(plan, question)
+
         # If follow-up, merge carry-over fields from prior plan
         if conversation_context and conversation_context.get("mode") != "new_query":
             plan = _merge_with_prior(plan, conversation_context)
@@ -148,6 +180,27 @@ def generate_query_plan(
     except Exception as e:
         logger.error(f"Error in query planner: {e}", exc_info=True)
         return None
+
+
+def _apply_hours_filter_rules(plan: Dict[str, Any], question: str) -> Dict[str, Any]:
+    """
+    Deterministic post-processor: if the question mentions peak hours phrases
+    but the LLM didn't populate hours_filter, inject it deterministically.
+    This guarantees business-time questions always work.
+    """
+    existing_hours = plan.get("filters", {}).get("hours_filter", [])
+    if existing_hours:
+        return plan  # LLM already handled it
+
+    q_lower = question.lower()
+    for phrase, hours in PEAK_HOURS_MAP.items():
+        if phrase in q_lower:
+            plan.setdefault("filters", {})
+            plan["filters"]["hours_filter"] = hours
+            logger.info(f"Deterministic hours_filter applied: '{phrase}' → {hours}")
+            break
+
+    return plan
 
 
 def _merge_with_prior(plan: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
