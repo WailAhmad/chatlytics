@@ -18,7 +18,7 @@ export default function RootLayout({
   return (
     // Defaulting to English LTR. We'll manage RTL switching via client state in the main page.
     <html lang="en" dir="ltr">
-      <body className={`${inter.variable} ${tajawal.variable} font-sans`}>
+      <body className={`${inter.variable} ${tajawal.variable} font-sans`} suppressHydrationWarning>
         {children}
       </body>
     </html>

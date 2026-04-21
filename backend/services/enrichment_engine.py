@@ -254,6 +254,7 @@ def generate_enrichment(
 
         # 3. Build Prompt
         is_unsupported = execution_result and execution_result.get("result_type") == "unsupported_metric"
+        is_single_value = not execution_result or not execution_result.get("grouped_result")
 
         prompt = f"""You are an AI Analytics Copilot writing for a non-technical business executive.
 
@@ -265,43 +266,57 @@ def generate_enrichment(
 
 === YOUR ROLE ===
 You are NOT computing anything. The execution result above IS the answer.
-Your job is to explain this result clearly and professionally.
+Your job is to explain this result using ONLY the numbers in the execution payload.
 
 === WRITING STYLE ===
-Write as if you are briefing a senior executive who has no technical background.
 - Start with the exact result value
-- Explain what it means in practical business terms
-- Add relevant context from the execution payload (comparisons, rankings, patterns)
-- Use 2-3 short, natural paragraphs
-- Be concise and confident, not verbose
-- No filler phrases like "It's worth noting that..." or "This may be influenced by..."
-- No speculation about external causes not present in the data
+- Every sentence MUST reference a specific number from the execution payload (mean, median, min, max, count, etc.)
+- Compare the result against other metrics in the payload (e.g., "The average of 48.56 is closer to the minimum of 27.11 than the maximum of 74.45, suggesting most readings are in the lower range")
+- NEVER write generic statements like "This reflects energy usage patterns" or "This can inform decisions"
+- NEVER write sentences that could apply to any dataset — every sentence must be specific to THIS result
+- Use 2-3 short paragraphs maximum
+- Be concise and data-driven, not verbose
 
 === STRICT RULES ===
-1. NEVER compute, infer, or estimate any numeric value. The execution result IS the answer.
-2. answer_text: 2-3 natural paragraphs, starting with the exact computed value, then business context.
-3. key_insights: 2-4 specific insights based ONLY on the execution result values. Each insight must reference a real number from the execution payload.
-4. chart_type must match the question type:
-   - trend/timeseries → "line"
-   - comparison/ranking/top N → "bar"
-   - single value (no grouping) → "none"
-   - forecast → "line"
-   - unsupported/empty → "none"
-5. chart_data: extract from "Top Grouped Results" above. If empty, use [].
-6. caveats: only if supported by the execution result (e.g., forecast baseline caveat).
+1. NEVER compute, infer, or estimate any value. Use only numbers from the execution payload.
+2. answer_text: 2-3 paragraphs. Every paragraph must contain at least one specific number from the execution result.
+3. key_insights: 2-3 insights. Each MUST:
+   - Reference a specific number from the execution payload
+   - Provide a non-obvious observation (e.g., comparing mean vs median for skew)
+   - NEVER state obvious facts like "X accounted for 100% of the total" when only one group was filtered
+   - NEVER restate the primary result as an insight
+   - NEVER give generic business advice
+4. chart_type:
+   - If grouped results have 2+ items → "bar"
+   - If question is about trend/timeseries → "line"
+   - If single value with no grouping → "none"
+   - If forecast → "line"
+5. chart_data: extract from "Top Grouped Results". If empty or single item, use [].
+6. caveats: only if directly supported by execution result.
 7. If result_type is "unsupported_metric": explain why and suggest alternatives.
 8. Language: Reply entirely in {"Arabic" if language == "ar" else "English"}.
 
+=== BAD INSIGHTS (never generate these) ===
+- "X accounted for 100% of the total" (obvious when single filter)
+- "This value is significant as it reflects..." (generic fluff)
+- "This can inform decisions related to..." (unsupported advice)
+- Restating the primary value without adding context
+
+=== GOOD INSIGHTS (follow this pattern) ===
+- "The average of 48.56 is higher than the median of 42.27, indicating the distribution is right-skewed with some high-consumption hours pulling the average up"
+- "The range between minimum (27.11) and maximum (74.45) spans 47.34 kWh, showing significant hourly variation"
+- "With 384 records over 7 days, this represents approximately 55 readings per day"
+
 === TARGET JSON SCHEMA ===
 {{
-  "answer_text": "2-3 natural paragraphs explaining the result for a business audience.",
+  "answer_text": "Data-driven paragraphs referencing specific numbers from execution result.",
   "answer_type": "python|llm|hybrid",
-  "key_insights": ["insight with specific numbers from execution result"],
+  "key_insights": ["insight referencing specific numbers from execution payload"],
   "kpis": [
     {{"label": "metric name", "value": "formatted value string"}}
   ],
-  "chart_type": "line|bar|histogram|scatter|none",
-  "chart_title": "Descriptive, business-friendly title",
+  "chart_type": "line|bar|none",
+  "chart_title": "Descriptive title",
   "chart_data": [
     {{"name": "category", "value": 123}}
   ],
@@ -312,7 +327,7 @@ Write as if you are briefing a senior executive who has no technical background.
         content = _call_groq(
             client,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
+            temperature=0.2,
             max_tokens=1500,
             response_format={"type": "json_object"},
         )
@@ -329,8 +344,32 @@ Write as if you are briefing a senior executive who has no technical background.
         result.setdefault("chart_data", [])
         result.setdefault("caveats", [])
 
+        # ── Post-processing: filter low-quality insights ──
+        NOISE_PATTERNS = [
+            "100% of the total",
+            "100% of total",
+            "accounted for 100%",
+            "reflects the district",
+            "can inform decisions",
+            "energy management and resource",
+            "usage patterns and can",
+        ]
+        filtered_insights = []
+        for ins in result.get("key_insights", []):
+            ins_lower = ins.lower()
+            if any(p.lower() in ins_lower for p in NOISE_PATTERNS):
+                continue
+            filtered_insights.append(ins)
+        result["key_insights"] = filtered_insights
+
+        # ── Force chart_type to "none" for single-value, no-grouping results ──
+        if is_single_value:
+            result["chart_type"] = "none"
+            result["chart_data"] = []
+
         return result
 
     except Exception as e:
         logger.error(f"Enrichment engine failed: {e}")
         return _deterministic_fallback(df, language, str(e), execution_result)
+
