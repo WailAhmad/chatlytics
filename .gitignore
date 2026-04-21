@@ -1,0 +1,10 @@
+node_modules/
+.next/
+backend/venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+data/active_dataset.csv
+/tmp/
+.DS_Store

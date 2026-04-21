@@ -1,0 +1,338 @@
+"""
+Conversational Analytics API
+----------------------------
+Multi-turn session-aware query planning and deterministic execution.
+"""
+
+import logging
+import os
+import shutil
+import uuid
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from backend.services.data_service import set_active_dataset, get_active_dataframe, clear_active_dataset, has_active_dataset
+from backend.services.schema_profiler import profile_dataframe
+from backend.services.query_planner import generate_query_plan
+from backend.services.filter_validator import validate_and_fix_plan, apply_semantic_mappings
+from backend.services.execution_engine import execute_query_plan
+
+from backend.services.session_store import (
+    get_session, update_session, clear_session,
+    get_session_context_for_planner, get_conversation_history
+)
+from backend.services.context_resolver import resolve_conversational_context
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+class AskRequest(BaseModel):
+    question: str
+    language: str = "en"
+    session_id: Optional[str] = None
+
+
+class ResetRequest(BaseModel):
+    session_id: str
+
+
+app = FastAPI(title="Conversational Analytics Copilot")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.post("/upload-csv")
+async def upload_file(file: UploadFile = File(...)):
+    global _cached_upload_summary
+    logger.info(f"Received file upload request: filename={file.filename}, content_type={file.content_type}")
+    if not file.filename.endswith(".csv"):
+        logger.error(f"Invalid file type: {file.filename}")
+        raise HTTPException(status_code=400, detail="Only CSV files are supported.")
+
+    upload_dir = os.path.join(os.path.dirname(__file__), "..", "data")
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, "active_dataset.csv")
+
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        logger.info(f"File saved to {file_path}")
+
+        set_active_dataset(file_path)
+        df = get_active_dataframe()
+        profile = profile_dataframe(df)
+        logger.info(f"Dataset profiled successfully. Row count: {profile.get('row_count')}")
+
+        from backend.services.enrichment_engine import generate_upload_summary
+        summary = generate_upload_summary(df, profile, language="en")
+        _cached_upload_summary = summary  # Cache for refresh
+        profile["upload_summary"] = summary
+
+        return {"message": "File uploaded successfully", "profile": profile}
+    except Exception as e:
+        logger.error(f"Error processing file upload: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to process upload: {str(e)}")
+
+
+# Module-level cache for upload summary (survives page refreshes)
+_cached_upload_summary: dict = None
+
+
+@app.get("/profile")
+@app.get("/dataset-profile")
+def get_profile():
+    global _cached_upload_summary
+    if not has_active_dataset():
+        return None
+    try:
+        df = get_active_dataframe()
+        profile = profile_dataframe(df)
+        # Use cached summary if available, otherwise regenerate
+        if _cached_upload_summary:
+            profile["upload_summary"] = _cached_upload_summary
+        else:
+            from backend.services.enrichment_engine import generate_upload_summary
+            summary = generate_upload_summary(df, profile, language="en")
+            _cached_upload_summary = summary
+            profile["upload_summary"] = summary
+        return profile
+    except Exception as e:
+        logger.error(f"Error getting profile: {e}")
+        return None
+
+
+@app.post("/clear-dataset")
+async def clear_dataset():
+    """Remove the active dataset from memory."""
+    global _cached_upload_summary
+    clear_active_dataset()
+    _cached_upload_summary = None
+    return {"status": "ok", "message": "Dataset cleared."}
+
+
+@app.post("/ask")
+async def ask(body: AskRequest):
+    try:
+        df = get_active_dataframe()
+    except Exception:
+        raise HTTPException(status_code=400, detail="No active dataset. Please upload a CSV first.")
+
+    # Session management
+    session_id = body.session_id or str(uuid.uuid4())
+    schema_profile = profile_dataframe(df)
+
+    # ── Step 1: Resolve conversational context ──
+    session_context = get_session_context_for_planner(session_id)
+    conv_context = resolve_conversational_context(body.question, session_context, schema_profile)
+
+    logger.info(f"Session: {session_id} | Mode: {conv_context['mode']}")
+
+    # ── Step 2: Generate Query Plan & Route ──
+    plan = generate_query_plan(body.question, schema_profile, body.language, conv_context)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Could not generate a query plan for this question.")
+
+    plan = validate_and_fix_plan(plan, schema_profile)
+    plan = apply_semantic_mappings(body.question, plan, schema_profile)
+
+    execution_path = plan.get("execution_path", "hybrid")
+    logger.info(f"Execution Path: {execution_path} | Validated Plan: {plan}")
+
+    # ── Step 2b: Metric Validation (fail-fast before execution) ──
+    from backend.services.validator import validate_plan as validate_metrics, build_unsupported_response
+    is_valid, invalid_reason, suggestion = validate_metrics(plan, schema_profile)
+    if not is_valid:
+        execution_result = build_unsupported_response(invalid_reason, suggestion, plan)
+        execution_path = "python"
+    else:
+        # ── Step 3: Execute Deterministic Python (if needed) ──
+        execution_result = None
+        if execution_path in ["python", "hybrid"]:
+            try:
+                execution_result = execute_query_plan(df, plan, schema_profile)
+            except Exception as e:
+                logger.error(f"Execution engine failed: {e}", exc_info=True)
+                execution_path = "llm"
+                execution_result = {"error": str(e)}
+
+    # ══════════════════════════════════════════════════════════════
+    # CORE RESPONSE LAYER (mandatory, LLM-independent, always runs)
+    # ══════════════════════════════════════════════════════════════
+    from backend.services.response_builder import (
+        build_aggregation_string, build_answer_text,
+        build_calculation_steps, build_formula_with_values
+    )
+    aggregation_string = ""
+    deterministic_answer = None
+    calculation_steps: list = []
+    formula_with_values = ""
+    records_used = None
+
+    if execution_result and execution_result.get("result_type") not in ("empty", None):
+        aggregation_string = build_aggregation_string(plan, execution_result)
+        deterministic_answer = build_answer_text(execution_result, plan, aggregation_string, body.language)
+        calculation_steps = build_calculation_steps(execution_result, plan, body.language)
+        formula_with_values = build_formula_with_values(execution_result, plan)
+        records_used = execution_result.get("records_used")
+
+    # Build core chart from execution payload (deterministic, no LLM)
+    from backend.services.chart_engine import build_chart_spec
+    core_chart_spec = {}
+    if execution_result and execution_result.get("result_type") not in ("empty", "unsupported_metric", None):
+        try:
+            core_chart_spec = build_chart_spec(plan, execution_result, schema_profile, "auto")
+        except Exception as e:
+            logger.warning(f"Chart engine failed (safe fallback): {e}")
+            core_chart_spec = {}
+
+    # Assemble the CORE response — this is always valid even if LLM is down
+    core_response = {
+        "humanized_chat_answer": deterministic_answer or "",
+        "answer": {
+            "headline": deterministic_answer or "Analysis Result",
+            "summary": "",
+            "primary_value": execution_result.get("primary_value") if execution_result else None,
+            "unit": execution_result.get("unit", "") if execution_result else "",
+            "result_type": execution_result.get("result_type", "explanation") if execution_result else "explanation",
+            "answer_type": execution_path,
+        },
+        "chart": core_chart_spec,
+        "insights": {
+            "ai": [],
+            "deterministic": {
+                "aggregation_string": aggregation_string,
+                "calculation_steps": calculation_steps,
+                "formula_with_values": formula_with_values,
+                "records_used": records_used,
+            }
+        },
+        "anomalies": [],
+        "kpis": [],
+        "suggested_questions": [],
+        "follow_up_questions": [],
+        "query_plan": plan,
+        "calculation_details": execution_result if execution_result else {},
+        "session_id": session_id,
+        "conversation_state": {
+            "mode": conv_context["mode"],
+            "used_prior_context": conv_context["mode"] != "new_query",
+            "carried_from_previous": [k for k, v in conv_context.get("carry_over_fields", {}).items() if v],
+            "turn_count": len(get_session(session_id).get("turns", [])) // 2 + 1,
+        }
+    }
+
+    if plan.get("_filter_corrections"):
+        core_response.setdefault("verification", {})["filter_corrections"] = plan["_filter_corrections"]
+
+    # ══════════════════════════════════════════════════════════════
+    # OPTIONAL ENHANCEMENT LAYER (LLM — additive only, never destructive)
+    # If this entire block fails, core_response is returned as-is.
+    # ══════════════════════════════════════════════════════════════
+    try:
+        from backend.services.enrichment_engine import generate_enrichment
+        enriched = generate_enrichment(body.question, df, schema_profile, plan, execution_result, body.language)
+
+        # Additive enrichments — only ADD to core, never REPLACE deterministic values
+        llm_answer_text = enriched.get("answer_text", "")
+        llm_insights = enriched.get("key_insights", [])
+        llm_kpis = enriched.get("kpis", [])
+        llm_caveats = enriched.get("caveats", [])
+        llm_chart_type = enriched.get("chart_type", "auto")
+        llm_chart_title = enriched.get("chart_title", "")
+
+        # Enrich headline with business-friendly title from LLM
+        if llm_chart_title:
+            core_response["answer"]["headline"] = llm_chart_title
+
+        # Enrich summary with LLM humanized explanation
+        if llm_answer_text:
+            core_response["answer"]["summary"] = llm_answer_text
+
+        # Use LLM humanized text as the PRIMARY chat answer (it's the natural-language version)
+        # Deterministic answer is preserved in insights.deterministic for traceability
+        if llm_answer_text:
+            core_response["humanized_chat_answer"] = llm_answer_text
+
+        # Enrich insights (additive only)
+        if llm_insights:
+            core_response["insights"]["ai"] = llm_insights
+
+        # Enrich KPIs (additive only)
+        if llm_kpis:
+            core_response["kpis"] = llm_kpis
+
+        # Enrich caveats (additive only)
+        if llm_caveats:
+            core_response["anomalies"] = llm_caveats
+
+        # Chart override: only if LLM says "none" AND execution had no chart
+        if llm_chart_type == "none" and not core_chart_spec.get("plotly_data"):
+            core_response["chart"] = {}
+
+        # For pure LLM path with no execution result, inject LLM chart data
+        llm_chart_data = enriched.get("chart_data", [])
+        if execution_path == "llm" and not core_chart_spec.get("plotly_data") and llm_chart_data:
+            try:
+                injected_result = {"result_type": "table", "chart_data": llm_chart_data, "summary_stats": {}}
+                core_response["chart"] = build_chart_spec(plan, injected_result, schema_profile, llm_chart_type)
+            except Exception:
+                pass  # Chart is optional, fail silently
+
+    except Exception as e:
+        # LLM enrichment failed — provide human-friendly fallback, never raw errors
+        logger.warning(f"Optional enhancement layer failed (safe fallback used): {e}")
+        is_ar = body.language == "ar"
+        if deterministic_answer:
+            fallback_summary = (
+                f"{deterministic_answer} الرؤى الإضافية غير متوفرة مؤقتاً." if is_ar
+                else f"{deterministic_answer} Additional narrative insights are temporarily unavailable."
+            )
+        else:
+            fallback_summary = (
+                "الرؤى الإضافية غير متوفرة مؤقتاً." if is_ar
+                else "Additional narrative insights are temporarily unavailable."
+            )
+        core_response["answer"]["summary"] = fallback_summary
+
+    # ── Final: Update Session ──
+    update_session(session_id, body.question, plan, execution_result if execution_result else {}, core_response)
+
+    return core_response
+
+
+@app.post("/reset-session")
+async def reset_session(body: ResetRequest):
+    clear_session(body.session_id)
+    return {"status": "ok", "session_id": body.session_id, "message": "Session cleared."}
+
+
+@app.get("/session-state")
+def session_state(session_id: str):
+    """Debug endpoint to view session state."""
+    session = get_session(session_id)
+    return {
+        "session_id": session_id,
+        "turns": len(session.get("turns", [])),
+        "last_question": session.get("last_question"),
+        "last_metric": session.get("last_metric"),
+        "last_operation": session.get("last_operation"),
+        "last_result_type": session.get("last_result_type"),
+        "last_result_summary": session.get("last_result_summary"),
+    }
