@@ -152,25 +152,42 @@ async def ask(body: AskRequest):
     plan = validate_and_fix_plan(plan, schema_profile)
     plan = apply_semantic_mappings(body.question, plan, schema_profile)
 
-    execution_path = plan.get("execution_path", "hybrid")
-    logger.info(f"Execution Path: {execution_path} | Validated Plan: {plan}")
-
-    # ── Step 2b: Metric Validation (fail-fast before execution) ──
-    from backend.services.validator import validate_plan as validate_metrics, build_unsupported_response
-    is_valid, invalid_reason, suggestion = validate_metrics(plan, schema_profile)
-    if not is_valid:
-        execution_result = build_unsupported_response(invalid_reason, suggestion, plan)
+    # ── Guard: if a user-specified filter was REMOVED (not corrected), abort ──
+    corrections = plan.get("_filter_corrections", [])
+    removed_filters = [c for c in corrections if c.startswith("Removed filter")]
+    if removed_filters:
+        execution_result = {
+            "result_type": "empty",
+            "primary_value": None,
+            "unit": "",
+            "records_used": 0,
+            "applied_filters": plan.get("filters", {}),
+            "grouped_result": [],
+            "chart_data": [],
+            "summary_stats": {"empty_reason": "; ".join(removed_filters)},
+        }
         execution_path = "python"
     else:
-        # ── Step 3: Execute Deterministic Python (if needed) ──
-        execution_result = None
-        if execution_path in ["python", "hybrid"]:
-            try:
-                execution_result = execute_query_plan(df, plan, schema_profile)
-            except Exception as e:
-                logger.error(f"Execution engine failed: {e}", exc_info=True)
-                execution_path = "llm"
-                execution_result = {"error": str(e)}
+
+        execution_path = plan.get("execution_path", "hybrid")
+        logger.info(f"Execution Path: {execution_path} | Validated Plan: {plan}")
+
+        # ── Step 2b: Metric Validation (fail-fast before execution) ──
+        from backend.services.validator import validate_plan as validate_metrics, build_unsupported_response
+        is_valid, invalid_reason, suggestion = validate_metrics(plan, schema_profile)
+        if not is_valid:
+            execution_result = build_unsupported_response(invalid_reason, suggestion, plan)
+            execution_path = "python"
+        else:
+            # ── Step 3: Execute Deterministic Python (if needed) ──
+            execution_result = None
+            if execution_path in ["python", "hybrid"]:
+                try:
+                    execution_result = execute_query_plan(df, plan, schema_profile)
+                except Exception as e:
+                    logger.error(f"Execution engine failed: {e}", exc_info=True)
+                    execution_path = "llm"
+                    execution_result = {"error": str(e)}
 
     # ══════════════════════════════════════════════════════════════
     # CORE RESPONSE LAYER (mandatory, LLM-independent, always runs)
@@ -245,7 +262,36 @@ async def ask(body: AskRequest):
     # OPTIONAL ENHANCEMENT LAYER (LLM — additive only, never destructive)
     # If this entire block fails, core_response is returned as-is.
     # ══════════════════════════════════════════════════════════════
-    try:
+
+    # GUARD: Never call LLM when execution returned empty — it will hallucinate.
+    is_empty = execution_result and execution_result.get("result_type") in ("empty", None)
+    if is_empty:
+        # Generate human-friendly empty message
+        empty_reason = execution_result.get("summary_stats", {}).get("empty_reason", "")
+        corrections = plan.get("_filter_corrections", [])
+        is_ar = body.language == "ar"
+        if corrections:
+            correction_text = "; ".join(corrections)
+            empty_msg = (
+                f"لم يتم العثور على بيانات مطابقة. تعديلات الفلتر: {correction_text}" if is_ar
+                else f"No matching data found. Filter adjustments: {correction_text}"
+            )
+        elif empty_reason:
+            empty_msg = (
+                f"لم يتم العثور على بيانات. {empty_reason}" if is_ar
+                else f"No data found. {empty_reason}"
+            )
+        else:
+            empty_msg = (
+                "لم يتم العثور على بيانات مطابقة للمعايير المحددة." if is_ar
+                else "No data matched the specified criteria. Please check the filters and try again."
+            )
+        core_response["humanized_chat_answer"] = empty_msg
+        core_response["answer"]["summary"] = empty_msg
+        core_response["answer"]["headline"] = "لا توجد نتائج" if is_ar else "No Results Found"
+
+    if not is_empty:
+      try:
         from backend.services.enrichment_engine import generate_enrichment
         enriched = generate_enrichment(body.question, df, schema_profile, plan, execution_result, body.language)
 
@@ -265,8 +311,7 @@ async def ask(body: AskRequest):
         if llm_answer_text:
             core_response["answer"]["summary"] = llm_answer_text
 
-        # Use LLM humanized text as the PRIMARY chat answer (it's the natural-language version)
-        # Deterministic answer is preserved in insights.deterministic for traceability
+        # Use LLM humanized text as the PRIMARY chat answer
         if llm_answer_text:
             core_response["humanized_chat_answer"] = llm_answer_text
 
@@ -295,7 +340,7 @@ async def ask(body: AskRequest):
             except Exception:
                 pass  # Chart is optional, fail silently
 
-    except Exception as e:
+      except Exception as e:
         # LLM enrichment failed — provide human-friendly fallback, never raw errors
         logger.warning(f"Optional enhancement layer failed (safe fallback used): {e}")
         is_ar = body.language == "ar"

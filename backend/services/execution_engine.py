@@ -268,9 +268,10 @@ def execute_query_plan(df: pd.DataFrame, plan: Dict[str, Any], schema_profile: D
 
     filtered_df = _apply_filters(df, filters)
 
-    # Apply hours_filter if present
+    # Apply hours_filter if present (but NOT when a semantic comparison will handle time windows)
     hours_filter = filters.get("hours_filter", [])
-    if hours_filter:
+    has_semantic_compare = plan.get("_semantic_comparison") is not None
+    if hours_filter and not has_semantic_compare:
         dt_cols = filtered_df.select_dtypes(include=["datetime64[ns]"]).columns
         if len(dt_cols) > 0:
             filtered_df = filtered_df[filtered_df[dt_cols[0]].dt.hour.isin(hours_filter)]
@@ -293,7 +294,7 @@ def execute_query_plan(df: pd.DataFrame, plan: Dict[str, Any], schema_profile: D
                 dt_col = datetime_cols[0]
                 filtered_df = filtered_df[filtered_df[dt_col].dt.hour.isin(sf["hours"])]
 
-    # Handle semantic comparison (peak vs off-peak)
+    # Handle semantic comparison (peak vs off-peak, morning vs evening)
     sem_compare = plan.get("_semantic_comparison")
     if sem_compare and sem_compare.get("type") == "peak_vs_offpeak":
         metric = plan.get("metric")
@@ -304,15 +305,20 @@ def execute_query_plan(df: pd.DataFrame, plan: Dict[str, Any], schema_profile: D
                 peak_df = filtered_df[filtered_df[dt_col].dt.hour.isin(sem_compare["peak_hours"])]
                 offpeak_df = filtered_df[filtered_df[dt_col].dt.hour.isin(sem_compare["offpeak_hours"])]
 
-                pd_op = {"average": "mean", "avg": "mean", "mean": "mean", "sum": "sum"}.get(
-                    plan.get("operation", "sum").lower(), "sum"
+                pd_op = {"average": "mean", "avg": "mean", "mean": "mean", "sum": "sum", "compare": "mean"}.get(
+                    plan.get("operation", "mean").lower(), "mean"
                 )
                 peak_val = round(float(peak_df[metric].agg(pd_op)), 2) if len(peak_df) > 0 else 0
                 offpeak_val = round(float(offpeak_df[metric].agg(pd_op)), 2) if len(offpeak_df) > 0 else 0
 
+                # Use custom labels if provided (e.g., morning vs evening)
+                labels = sem_compare.get("labels", [
+                    f"Peak Hours ({sem_compare['peak_hours'][0]}-{sem_compare['peak_hours'][-1]})",
+                    f"Off-Peak ({sem_compare['offpeak_hours'][0]}-{sem_compare['offpeak_hours'][-1]})"
+                ])
                 chart_data = [
-                    {"name": "Peak Hours (17-22)", "value": peak_val},
-                    {"name": "Off-Peak (0-7)", "value": offpeak_val},
+                    {"name": labels[0], "value": peak_val},
+                    {"name": labels[1], "value": offpeak_val},
                 ]
                 unit = _infer_unit(metric)
                 delta = round(peak_val - offpeak_val, 2)
@@ -336,6 +342,47 @@ def execute_query_plan(df: pd.DataFrame, plan: Dict[str, Any], schema_profile: D
                         "offpeak_records": len(offpeak_df),
                     }
                 }
+    # Handle status_code split comparisons (normal vs outage)
+    elif sem_compare and sem_compare.get("type") == "status_split":
+        metric = plan.get("metric")
+        col = sem_compare.get("column", "status_code")
+        group_a = sem_compare["group_a"]
+        group_b = sem_compare["group_b"]
+        if metric and metric in filtered_df.columns and col in filtered_df.columns:
+            pd_op = {"average": "mean", "avg": "mean", "mean": "mean", "sum": "sum", "compare": "mean"}.get(
+                plan.get("operation", "mean").lower(), "mean"
+            )
+            df_a = filtered_df[filtered_df[col] == group_a["value"]]
+            df_b = filtered_df[filtered_df[col] == group_b["value"]]
+            val_a = round(float(df_a[metric].agg(pd_op)), 2) if len(df_a) > 0 else 0
+            val_b = round(float(df_b[metric].agg(pd_op)), 2) if len(df_b) > 0 else 0
+
+            chart_data = [
+                {"name": group_a["label"], "value": val_a},
+                {"name": group_b["label"], "value": val_b},
+            ]
+            unit = _infer_unit(metric)
+            delta = round(val_a - val_b, 2)
+            ratio = round(val_a / val_b, 2) if val_b != 0 else 0
+
+            return {
+                "result_type": "table",
+                "primary_value": val_a,
+                "unit": unit,
+                "records_used": len(df_a) + len(df_b),
+                "applied_filters": plan.get("filters", {}),
+                "grouped_result": chart_data,
+                "chart_data": chart_data,
+                "summary_stats": {
+                    "operation_used": pd_op,
+                    f"{group_a['label']}_value": val_a,
+                    f"{group_b['label']}_value": val_b,
+                    f"{group_a['label']}_records": len(df_a),
+                    f"{group_b['label']}_records": len(df_b),
+                    "delta": delta,
+                    "ratio": ratio,
+                }
+            }
     elif sem_compare and sem_compare.get("type") == "peak_vs_normal_days":
         metric = plan.get("metric")
         if metric and metric in filtered_df.columns:
