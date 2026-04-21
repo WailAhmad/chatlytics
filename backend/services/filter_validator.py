@@ -153,6 +153,7 @@ def apply_semantic_mappings(question: str, plan: Dict[str, Any], schema_profile:
     has_compare = any(kw in q_lower for kw in ["compare", "vs", "versus", "differ", "between", "قارن", "مقارنة", "بين"])
     has_morning = any(kw in q_lower for kw in ["morning peak", "morning", "صباح"])
     has_evening = any(kw in q_lower for kw in ["evening peak", "evening", "مساء"])
+    has_business = any(kw in q_lower for kw in ["business hours", "ساعات العمل", "working hours"])
 
     # Detect status-based comparisons
     has_normal = any(kw in q_lower for kw in ["normal operation", "normal", "عادي", "طبيعي"])
@@ -194,6 +195,18 @@ def apply_semantic_mappings(question: str, plan: Dict[str, Any], schema_profile:
         plan["question_type"] = "comparison"
         semantic_detected = True
         logger.info("Semantic comparison detected: normal vs outage")
+    elif has_business and has_offpeak and has_compare:
+        # Business hours vs off-peak comparison
+        plan["_semantic_comparison"] = {
+            "type": "peak_vs_offpeak",
+            "peak_hours": list(range(8, 18)),       # business: 08–17
+            "offpeak_hours": list(range(0, 8)) + list(range(22, 24)),  # off-peak: 0–7, 22–23
+            "labels": ["Business Hours (08–17)", "Off-Peak (00–07, 22–23)"],
+        }
+        plan["operation"] = "compare"
+        plan["question_type"] = "comparison"
+        semantic_detected = True
+        logger.info("Semantic comparison detected: business hours vs off-peak")
     elif has_peak and has_offpeak and has_compare:
         # Generic peak-vs-offpeak comparison
         plan["_semantic_comparison"] = {

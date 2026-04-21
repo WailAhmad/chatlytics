@@ -152,6 +152,61 @@ def _execute_maintenance(df: pd.DataFrame, plan: Dict[str, Any]) -> Dict[str, An
     }
 
 
+def _execute_stability(df: pd.DataFrame, plan: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Compute stability = std(metric) per group, ranked ascending (lowest std = most stable).
+    Handles 'most stable', 'least variable', 'lowest standard deviation' questions.
+    """
+    metric = plan.get("metric")
+    group_by = plan.get("group_by", [])
+    if not metric or metric not in df.columns:
+        return {
+            "result_type": "unsupported_metric", "primary_value": None, "unit": "",
+            "records_used": 0, "applied_filters": plan.get("filters", {}),
+            "grouped_result": [], "chart_data": [],
+            "summary_stats": {"unsupported_reason": f"Column '{metric}' is required for stability analysis."}
+        }
+    if not group_by or group_by[0] not in df.columns:
+        return {
+            "result_type": "unsupported_metric", "primary_value": None, "unit": "",
+            "records_used": 0, "applied_filters": plan.get("filters", {}),
+            "grouped_result": [], "chart_data": [],
+            "summary_stats": {"unsupported_reason": "Stability analysis requires a group_by column (e.g., region, asset_id)."}
+        }
+
+    gb_col = group_by[0]
+    grouped = df.groupby(gb_col)[metric].agg(["std", "mean", "count"]).reset_index()
+    grouped = grouped.sort_values("std", ascending=True).reset_index(drop=True)
+    grouped["std"] = grouped["std"].round(2)
+    grouped["mean"] = grouped["mean"].round(2)
+
+    # Build ranked result
+    chart_data = [{"name": str(row[gb_col]), "value": float(row["std"])} for _, row in grouped.iterrows()]
+    most_stable = grouped.iloc[0]
+    unit = _infer_unit(metric)
+
+    return {
+        "result_type": "table",
+        "primary_value": float(most_stable["std"]),
+        "unit": unit,
+        "records_used": int(df[metric].notna().sum()),
+        "applied_filters": plan.get("filters", {}),
+        "grouped_result": chart_data,
+        "chart_data": chart_data,
+        "summary_stats": {
+            "operation_used": f"std({metric}) grouped by {gb_col}, sorted ascending",
+            "most_stable": str(most_stable[gb_col]),
+            "most_stable_std": float(most_stable["std"]),
+            "most_stable_mean": float(most_stable["mean"]),
+            "most_stable_count": int(most_stable["count"]),
+            "ranking": [
+                {"rank": i+1, "group": str(row[gb_col]), "std": float(row["std"]), "mean": float(row["mean"]), "count": int(row["count"])}
+                for i, row in grouped.iterrows()
+            ]
+        }
+    }
+
+
 def _execute_net_balance(df: pd.DataFrame, plan: Dict[str, Any]) -> Dict[str, Any]:
     """
     Compute net grid balance = sum(generation_kwh) - sum(load_kwh).
@@ -283,6 +338,8 @@ def execute_query_plan(df: pd.DataFrame, plan: Dict[str, Any], schema_profile: D
         return _execute_net_balance(filtered_df, plan)
     if operation == "peak_with_companion":
         return _execute_peak_with_companion(filtered_df, plan)
+    if operation == "stability":
+        return _execute_stability(filtered_df, plan)
 
 
     # Apply semantic filters (e.g., peak hours)

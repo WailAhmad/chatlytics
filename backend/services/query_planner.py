@@ -84,7 +84,8 @@ You must classify the question into one of three execution paths:
     - "off-peak hours" → hours_filter: [22, 23, 0, 1, 2, 3, 4, 5, 6]
     - "peak hours" → hours_filter: [7, 8, 9, 10, 17, 18, 19, 20, 21]
     - "between 9am and 2pm" → hours_filter: [9, 10, 11, 12, 13]
-17. Return ONLY JSON.
+17. STABILITY/CONSISTENCY questions (e.g., "most stable", "least variable", "lowest standard deviation", "most consistent"): set operation="stability", question_type="ranking", output_mode="table". The metric is the column to measure stability of. MUST have a group_by field (e.g., ["region"] or ["asset_id"]).
+18. Return ONLY JSON.
 
 === TARGET JSON SCHEMA ===
 {{
@@ -92,7 +93,7 @@ You must classify the question into one of three execution paths:
   "task": "analyze|explain",
   "metric": "column_name_or_null",
   "metric_role": "load|generation|count|custom|unknown",
-  "operation": "average|sum|max|min|count|rank|compare|trend|distribution|explain|forecast|maintenance|net_balance|peak_with_companion|unknown",
+  "operation": "average|sum|max|min|count|rank|compare|trend|distribution|explain|forecast|maintenance|net_balance|peak_with_companion|stability|unknown",
   "companion_metric": "column_name_or_null",
   "group_by": ["column1"],
   "top_n": 10,
