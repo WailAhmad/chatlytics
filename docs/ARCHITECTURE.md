@@ -120,7 +120,7 @@ The evaluation loop should include:
 - **Golden query suite**: a versioned set of natural-language questions with expected query plans and pandas/DuckDB ground truth. The four assessment questions become seed tests.
 - **Plan diffing**: for every prompt, model, or glossary change, compare old and new JSON plans before comparing final answers.
 - **Release threshold**: require 100% pass on critical business questions and at least 95% pass on broader regression questions before promotion.
-- **Canary rollout**: send 5-10% of planner traffic to a new prompt/model, execute in shadow mode, and compare plan validity, answer deltas, validation rejection rate, latency, and token cost before full rollout.
+- **Sampled shadow evaluation before canary**: mirror 5-10% of production questions to the candidate prompt/model, ignore its output, and compare plan validity, answer deltas, validation rejection rate, latency, and token cost. Promote to a true canary only after the shadow run passes.
 - **Production monitoring**: log rejected plans, unsupported metrics, empty-result rates, planner fallback usage, and human thumbs-up/down feedback for retraining the eval set.
 
 ## Failure Handling
@@ -148,19 +148,11 @@ Initial production targets should be explicit:
 |---|---:|---|
 | API p50 latency for deterministic-rule questions | < 800 ms | No LLM call; cached schema/profile. |
 | API p95 latency for LLM-planned questions | < 4 s | Excludes first-time cold start and large dataset profile refresh. |
-| Planner token budget | <= 1,500 input + 500 output tokens | Compact schema profile, no raw dataset rows except tiny samples. |
+| Planner token budget | <= 3,000-4,000 input + 500 output tokens | Compact schema profile, no raw dataset rows except tiny samples. Lower budgets are possible only without few-shot examples or long conversation context. |
 | Availability | 99.5% for POC production pilot | App Service/Container Apps health probes and one-region deployment. |
+| Recovery objective | RTO 15 minutes | Failed instances restart behind App Service or Container Apps health probes. |
+| Data recovery objective | Near-zero RPO with ZRS | Use asynchronous GRS for disaster recovery, where cross-region RPO is not strictly zero. |
 | API throughput | 1-5 QPS initially | Enough for assessment/pilot; scale horizontally after measuring real use. |
-| Cost control | Cache hit rate > 30% on repeated questions | Cache plans by question hash + schema hash; skip LLM for known intents. |
+| Cost control | Cache hit rate > 30% on repeated questions | Cache plans by question hash + schema hash; skip LLM for known intents. If hit rate stays lower, review query patterns, normalize paraphrases, and expand deterministic rules for frequent intents. |
 
-Monitor model token usage, latency, validation-failure rates, empty-result rates, top query patterns, and authorization denials. Control cost with prompt size limits, schema summarization, caching dataset profiles, API Management rate limits, deterministic planning for common intents, and cheaper model routing for non-critical narrative summaries.
-
-## Availability Targets
-
-- **RTO**: 15 minutes for the API tier; failed instances restart behind App Service or Container Apps health probes.
-- **RPO**: 0 for uploaded source files stored in ADLS; in-memory sessions and caches are best-effort POC state and should move to Redis/Cosmos DB for production durability.
-- **LLM outage mode**: cached plans and deterministic fallback rules continue serving known intents. Open-ended questions return a structured degraded-mode message.
-
-## Cost Controls
-
-The planner prompt is capped and uses a compact schema profile. Successful plans are cached for repeated questions, and deterministic planning avoids LLM calls for common operational questions. At production scale, log prompt/completion tokens per request, set per-user/day quotas in API Management, and route simple narrative enrichment to a cheaper Llama-family model while reserving Azure OpenAI for ambiguous or high-value questions.
+Monitor model token usage, latency, validation-failure rates, empty-result rates, top query patterns, authorization denials, and LLM outage/degraded-mode usage. Cached plans and deterministic fallback rules should continue serving known intents during an LLM outage; open-ended questions return a structured degraded-mode message. Control cost with prompt size limits, schema summarization, cached dataset profiles, API Management per-user quotas, deterministic planning for common intents, and cheaper model routing for non-critical narrative summaries.
