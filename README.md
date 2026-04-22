@@ -6,13 +6,14 @@ A conversational analytics proof of concept built for the Aldar AI Architect ass
 
 ```
 ├── backend/
-│   ├── main.py          # FastAPI entry point
-│   ├── services/        # Business logic (empty for now)
-│   └── models/          # Data models (empty for now)
-├── web/                 # Next.js reviewer UI
+│   ├── main.py          # FastAPI entry point and route handlers
+│   ├── services/        # Query planner, execution engine, validators, response builder
+│   └── tests/           # Regression + assessment-scenario tests (pytest, 43 passing)
+├── web/                 # Next.js reviewer UI (chat, charts, calculation traces)
 ├── docs/
 │   └── ARCHITECTURE.md  # Part 2 Azure production architecture
-├── data/                # Data storage
+├── data/                # Uploaded datasets (gitignored active copy)
+├── scripts/             # Local run + submission helpers
 ├── requirements.txt
 └── README.md
 ```
