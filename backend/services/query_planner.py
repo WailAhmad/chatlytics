@@ -175,6 +175,16 @@ def generate_query_plan(
         cached["_plan_cache_hit"] = True
         return cached
 
+    # Prefer deterministic plans for known assessment/domain intents. This keeps
+    # the demo-critical path fast and available even when the hosted LLM is
+    # rate-limited.
+    if not conversation_context or conversation_context.get("mode") == "new_query":
+        deterministic = _build_deterministic_plan(question, schema_profile, language)
+        if deterministic:
+            _set_cached_plan(cache_key, deterministic)
+            logger.info("Using deterministic rule planner for known intent.")
+            return deterministic
+
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         logger.warning("GROQ_API_KEY missing. Trying deterministic fallback planner.")

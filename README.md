@@ -38,13 +38,21 @@ Create a `.env` file for LLM-backed query planning:
 GROQ_API_KEY=your_key_here
 ```
 
-The calculation, validation, response-building, and chart layers are deterministic Python. The LLM is used to translate natural-language questions into a structured query plan and to optionally enrich the narrative summary.
+The calculation, validation, response-building, and chart layers are deterministic Python. The LLM is used to translate open-ended natural-language questions into a structured query plan and to optionally enrich the narrative summary.
 
-If the hosted LLM is rate-limited or unavailable, the backend falls back to deterministic planning for the assessment-critical intents: average load by region, March date filters, peak generation with companion load, maintenance hours, solar business-vs-off-peak comparison, and net balance. Successful LLM plans are cached briefly by `question + schema` to reduce repeat token usage.
+Assessment-critical intents use deterministic planning first: average load by region, March date filters, peak generation with companion load, maintenance hours, solar business-vs-off-peak comparison, and net balance. This keeps the demo path available even if the hosted LLM is rate-limited. Successful plans are cached briefly by `question + schema` to reduce repeat token usage.
 
 ## Running
 
 ### Backend (FastAPI)
+
+Recommended for demos, because it kills any stale process on port `8000` before starting the latest code:
+
+```bash
+./scripts/restart_backend.sh
+```
+
+Manual equivalent:
 
 ```bash
 uvicorn backend.main:app --reload --port 8000
@@ -52,6 +60,10 @@ uvicorn backend.main:app --reload --port 8000
 
 The API will be available at `http://localhost:8000`.  
 Health check: `http://localhost:8000/health`
+
+The health response includes the running git commit and working directory. If the UI ever behaves like old code is running, check this endpoint first and restart with `./scripts/restart_backend.sh`.
+
+The backend restores the last uploaded dataset from `data/active_dataset.csv` across local reloads/restarts, so a code reload does not force reviewers to upload the CSV again.
 
 ### Frontend (Next.js)
 

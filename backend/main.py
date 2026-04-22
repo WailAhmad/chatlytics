@@ -7,6 +7,7 @@ Multi-turn session-aware query planning and deterministic execution.
 import logging
 import os
 import shutil
+import subprocess
 import uuid
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,7 +56,24 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    git_commit = "unknown"
+    try:
+        git_commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=os.path.dirname(os.path.dirname(__file__)),
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        pass
+
+    return {
+        "status": "ok",
+        "app": "aldar-conversational-analytics",
+        "commit": git_commit,
+        "cwd": os.getcwd(),
+        "dataset_loaded": has_active_dataset(),
+    }
 
 
 @app.post("/upload-csv")

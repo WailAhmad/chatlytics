@@ -9,8 +9,11 @@ import os
 import pandas as pd
 from typing import Optional
 
-# No default dataset — must be uploaded
+# Dataset is uploaded by the user, then restored from data/active_dataset.csv
+# across backend restarts/reloads for a smoother local demo.
 ACTIVE_DATA_PATH: Optional[str] = None
+DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+LAST_UPLOADED_DATASET = os.path.join(DATA_DIR, "active_dataset.csv")
 
 # Cached dataframe
 _ACTIVE_DF: Optional[pd.DataFrame] = None
@@ -34,13 +37,19 @@ def clear_active_dataset():
 
 def has_active_dataset() -> bool:
     """Check if a dataset is currently loaded."""
-    return ACTIVE_DATA_PATH is not None and os.path.exists(ACTIVE_DATA_PATH)
+    global ACTIVE_DATA_PATH
+    if ACTIVE_DATA_PATH is not None and os.path.exists(ACTIVE_DATA_PATH):
+        return True
+    if os.path.exists(LAST_UPLOADED_DATASET):
+        ACTIVE_DATA_PATH = LAST_UPLOADED_DATASET
+        return True
+    return False
 
 
 def get_active_dataframe() -> pd.DataFrame:
     global _ACTIVE_DF, _ACTIVE_PATH
 
-    if ACTIVE_DATA_PATH is None:
+    if ACTIVE_DATA_PATH is None and not has_active_dataset():
         raise FileNotFoundError("No dataset loaded. Please upload a CSV first.")
 
     if _ACTIVE_DF is not None and _ACTIVE_PATH == ACTIVE_DATA_PATH:
