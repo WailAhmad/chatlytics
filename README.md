@@ -122,6 +122,16 @@ curl -X POST http://localhost:8000/ask \
 - The assessment data dictionary mentions `curtailment_flag`, but the supplied CSV does not contain that column. The schema validator returns a structured unsupported response for missing-column questions rather than fabricating an answer.
 - See `docs/ARCHITECTURE.md` for the Azure production architecture discussion.
 
+## Submission Packaging
+
+Preferred submission is a Git repository link so reviewers can inspect history and avoid local archive artifacts. If a zip archive is required, create it with:
+
+```bash
+./scripts/create_submission_archive.sh
+```
+
+The script excludes local secrets and generated dependencies such as `.env`, `.git`, `backend/venv`, `web/node_modules`, `web/.next`, and `data/active_dataset.csv`. Reviewers should create their own `.env` from `.env.example` and set `GROQ_API_KEY` if they want LLM-backed open-ended planning.
+
 ## Verification
 
 ```bash
