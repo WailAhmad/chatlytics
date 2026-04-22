@@ -2,6 +2,8 @@
 
 A conversational analytics proof of concept built for the Aldar AI Architect assessment. The backend accepts natural-language analytics questions, converts them into structured query plans, executes calculations deterministically with pandas, and returns a traceable JSON response.
 
+![Data Analytics Copilot landing page](docs/images/landing-page.png)
+
 ## Project Structure
 
 ```
