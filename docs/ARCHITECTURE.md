@@ -56,6 +56,23 @@ The API receives a natural-language question and the active dataset profile. Azu
 
 The LLM is used for intent mapping and optional human-readable explanation. It never calculates values or generates executable code. Pandas in the POC, and a production compute layer such as Synapse Spark, Fabric, or Azure Functions with DataFrames for smaller workloads, applies filters and performs averages, sums, rankings, comparisons, and lookups. The response includes the answer plus trace metadata: filters applied, operation, rows considered, and columns used.
 
+## POC to Azure Component Map
+
+| Current component | Production Azure target | Rationale |
+|---|---|---|
+| `web/` Next.js UI | Azure Static Web Apps or Azure App Service | Lightweight reviewer/user interface with simple CI/CD and optional Entra ID integration. |
+| `backend/main.py` FastAPI routes | Azure App Service or Azure Container Apps behind API Management | Keeps the current REST contract while adding auth, throttling, health probes, and versioned API exposure. |
+| `query_planner.py` | Azure OpenAI-backed planner service with deterministic rule pre-router | Preserves the strict NL-to-JSON contract and avoids LLM calls for known operational intents. |
+| `filter_validator.py` and `validator.py` | Validation middleware inside the API service | Enforces schema safety, domain mappings, and fail-closed behavior before execution. |
+| `execution_engine.py` | Pandas for small files; Synapse/Fabric/ADX execution adapter for larger datasets | Keeps calculations deterministic while allowing scale-out compute as data volume grows. |
+| `schema_profiler.py` | Metadata profiling job stored in ADLS/Fabric catalog | Reuses schema-aware planning while caching dataset profiles for lower latency and token spend. |
+| `response_builder.py` | API response contract layer | Maintains traceable JSON with formulas, filters, rows, and columns for auditability. |
+| `enrichment_engine.py` | Optional Azure OpenAI narrative service | Adds human-readable summaries without changing deterministic values. |
+| `session_store.py` and in-memory plan cache | Azure Cache for Redis or Cosmos DB | Makes sessions, cached plans, and repeated-question performance durable across instances. |
+| `data/active_dataset.csv` | Azure Data Lake Storage Gen2 raw/curated zones | Moves uploaded source data out of local disk and enables governed retention and access control. |
+| `.env` secrets | Azure Key Vault with managed identity | Removes local secret handling from production runtime. |
+| `backend/tests/` | CI regression and replay suite in GitHub Actions or Azure DevOps | Blocks prompt/model/code changes that break golden business questions. |
+
 ## Azure Services
 
 - **Azure API Management**: authentication, throttling, request policies, and versioned API exposure.

@@ -125,6 +125,7 @@ curl -X POST http://localhost:8000/ask \
 ## Verification
 
 ```bash
+backend/venv/bin/python -m pytest backend/tests/test_assessment_scenarios.py -q
 backend/venv/bin/python -m pytest backend/tests/test_regression.py -q
 backend/venv/bin/python -m compileall backend -q
 ```
