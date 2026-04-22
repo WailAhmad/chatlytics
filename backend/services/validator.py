@@ -122,6 +122,7 @@ def build_unsupported_response(reason: str, suggestion: Optional[str], plan: Dic
         "summary_stats": {
             "unsupported_reason": reason,
             "suggestion": suggestion or "No suggestion available.",
+            "available_columns": plan.get("_available_columns", []),
         },
         "aggregation_string": "UNSUPPORTED",
     }

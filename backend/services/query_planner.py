@@ -8,9 +8,48 @@ Supports multi-turn conversation context for follow-up queries.
 import json
 import logging
 import os
+import re
+import time
+from calendar import monthrange
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+PLAN_CACHE_TTL_SECONDS = 600
+_PLAN_CACHE: Dict[str, Dict[str, Any]] = {}
+
+MONTHS = {
+    "january": 1,
+    "february": 2,
+    "march": 3,
+    "april": 4,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "september": 9,
+    "october": 10,
+    "november": 11,
+    "december": 12,
+}
+
+ORDINAL_WEEKS = {
+    "first": 1,
+    "1st": 1,
+    "one": 1,
+    "second": 2,
+    "2nd": 2,
+    "two": 2,
+    "third": 3,
+    "3rd": 3,
+    "three": 3,
+    "fourth": 4,
+    "4th": 4,
+    "four": 4,
+    "fifth": 5,
+    "5th": 5,
+    "five": 5,
+}
 
 # ── Deterministic peak hours mapping ──
 # These business phrases are mapped to hour ranges AFTER the LLM plan,
@@ -72,7 +111,7 @@ You must classify the question into one of three execution paths:
 8. If the user asks for distribution, variability, or spread, set operation="distribution", output_mode="single_value".
 9. If the user asks to compare two things, set operation="compare", question_type="comparison".
 10. NEVER ADD FILTERS THE USER DID NOT EXPLICITLY MENTION. Do not guess or invent values for the "equals" filters.
-11. If the user asks for an EXPLANATION of the dataset, set execution_path="llm" and operation="explain".
+11. If the user asks for a GENERAL EXPLANATION of the dataset structure, set execution_path="llm" and operation="explain". However, if they ask HOW to calculate a specific metric (e.g., "how did you calculate average load"), you MUST plan the actual calculation (e.g., operation="average") and set execution_path="hybrid" so the execution engine can generate the calculation steps for the LLM to explain.
 12. If the user asks for a FORECAST, PROJECTION, or EXPECTATION: set operation="forecast", question_type="forecast", output_mode="timeseries", chart.type="line", execution_path="hybrid".
 13. MAINTENANCE/DOWNTIME questions: set operation="maintenance", question_type="maintenance". NEVER use load_kwh/generation_kwh as metric for this.
 14. NET BALANCE/SURPLUS/DEFICIT questions: set operation="net_balance", question_type="net_balance". Leave metric null.
@@ -129,10 +168,20 @@ def generate_query_plan(
     language: str = "en",
     conversation_context: Optional[Dict[str, Any]] = None
 ) -> Optional[Dict[str, Any]]:
+    cache_key = _build_plan_cache_key(question, schema_profile, language, conversation_context)
+    cached = _get_cached_plan(cache_key)
+    if cached:
+        logger.info("Query plan cache hit")
+        cached["_plan_cache_hit"] = True
+        return cached
+
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
-        logger.error("GROQ_API_KEY missing. Query planning failed.")
-        return None
+        logger.warning("GROQ_API_KEY missing. Trying deterministic fallback planner.")
+        fallback = _build_deterministic_plan(question, schema_profile, language)
+        if fallback:
+            _set_cached_plan(cache_key, fallback)
+        return fallback
 
     try:
         from groq import Groq
@@ -168,19 +217,225 @@ def generate_query_plan(
         plan["filters"].setdefault("equals", {})
         plan.setdefault("group_by", [])
 
-        # ── Deterministic post-processing: peak hours ──
-        plan = _apply_hours_filter_rules(plan, question)
+        # ── Deterministic post-processing ──
+        plan = _normalize_plan(plan, question)
 
         # If follow-up, merge carry-over fields from prior plan
         if conversation_context and conversation_context.get("mode") != "new_query":
             plan = _merge_with_prior(plan, conversation_context)
 
+        _set_cached_plan(cache_key, plan)
         logger.info(f"Query Plan Generated: {json.dumps(plan, ensure_ascii=False)}")
         return plan
 
     except Exception as e:
         logger.error(f"Error in query planner: {e}", exc_info=True)
+        fallback = _build_deterministic_plan(question, schema_profile, language)
+        if fallback:
+            _set_cached_plan(cache_key, fallback)
+        return fallback
+
+
+def _normalize_plan(plan: Dict[str, Any], question: str) -> Dict[str, Any]:
+    plan.setdefault("filters", {})
+    plan["filters"].setdefault("date_range", {"start": None, "end": None})
+    plan["filters"].setdefault("equals", {})
+    plan["filters"].setdefault("hours_filter", [])
+    plan.setdefault("group_by", [])
+    plan = _apply_date_range_rules(plan, question)
+    plan = _apply_hours_filter_rules(plan, question)
+    return plan
+
+
+def _build_plan_cache_key(
+    question: str,
+    schema_profile: Dict[str, Any],
+    language: str,
+    conversation_context: Optional[Dict[str, Any]] = None,
+) -> str:
+    columns = ",".join(schema_profile.get("columns", []))
+    row_count = schema_profile.get("row_count", 0)
+    context_mode = (conversation_context or {}).get("mode", "new_query")
+    prior = ""
+    if conversation_context and context_mode != "new_query":
+        prior_plan = conversation_context.get("base_query_plan", {}) or {}
+        prior = json.dumps({
+            "metric": prior_plan.get("metric"),
+            "operation": prior_plan.get("operation"),
+            "filters": prior_plan.get("filters"),
+            "group_by": prior_plan.get("group_by"),
+        }, sort_keys=True)
+    return f"{language}|{question.strip().lower()}|{row_count}|{columns}|{context_mode}|{prior}"
+
+
+def _get_cached_plan(cache_key: str) -> Optional[Dict[str, Any]]:
+    entry = _PLAN_CACHE.get(cache_key)
+    if not entry:
         return None
+    if time.time() - entry["created_at"] > PLAN_CACHE_TTL_SECONDS:
+        _PLAN_CACHE.pop(cache_key, None)
+        return None
+    return json.loads(json.dumps(entry["plan"]))
+
+
+def _set_cached_plan(cache_key: str, plan: Dict[str, Any]) -> None:
+    _PLAN_CACHE[cache_key] = {
+        "created_at": time.time(),
+        "plan": json.loads(json.dumps(plan)),
+    }
+    # Tiny bounded cache for POC use.
+    if len(_PLAN_CACHE) > 128:
+        oldest = sorted(_PLAN_CACHE.items(), key=lambda item: item[1]["created_at"])[:32]
+        for key, _ in oldest:
+            _PLAN_CACHE.pop(key, None)
+
+
+def _build_deterministic_plan(
+    question: str,
+    schema_profile: Dict[str, Any],
+    language: str = "en",
+) -> Optional[Dict[str, Any]]:
+    """
+    Fallback planner for known assessment/domain intents. This is intentionally
+    small: it protects demo-critical questions when the hosted LLM is rate
+    limited, while leaving open-ended analytics to the LLM planner.
+    """
+    q_lower = question.lower()
+    columns = set(schema_profile.get("columns", []))
+    unique_values = schema_profile.get("unique_values", {})
+
+    def base(metric: Optional[str], operation: str) -> Dict[str, Any]:
+        return {
+            "execution_path": "python",
+            "task": "analyze",
+            "metric": metric,
+            "metric_role": "unknown",
+            "operation": operation,
+            "companion_metric": None,
+            "group_by": [],
+            "top_n": 10,
+            "filters": {
+                "date_range": {"start": None, "end": None},
+                "equals": {},
+                "hours_filter": [],
+            },
+            "sort": {"by": metric, "direction": "desc"},
+            "chart": {"type": "none", "x": None, "y": metric},
+            "output_mode": "single_value",
+            "language": language,
+            "question_type": "summary",
+            "_planner_fallback": "deterministic_rule",
+        }
+
+    has_load = "load_kwh" in columns
+    has_generation = "generation_kwh" in columns
+
+    if any(term in q_lower for term in ["maintenance", "downtime", "scheduled", "صيانة"]):
+        plan = base("status_code" if "status_code" in columns else None, "maintenance")
+        plan["metric_role"] = "count"
+        plan["question_type"] = "maintenance"
+        plan["group_by"] = ["asset_id"] if "asset_id" in columns else ["region"] if "region" in columns else []
+        plan["output_mode"] = "table"
+        return _normalize_plan(plan, question)
+
+    if has_generation and has_load and any(term in q_lower for term in ["highest generation", "generation peaked", "peak generation"]):
+        plan = base("generation_kwh", "peak_with_companion")
+        plan["metric_role"] = "generation"
+        plan["companion_metric"] = "load_kwh"
+        plan["question_type"] = "lookup"
+        if any(term in q_lower for term in ["which hour", "what hour", "hour had"]):
+            plan["_peak_grain"] = "hourly"
+        return _normalize_plan(plan, question)
+
+    if has_load and any(term in q_lower for term in ["average", "avg", "mean", "متوسط"]) and any(term in q_lower for term in ["load", "consumption", "حمل"]):
+        plan = base("load_kwh", "average")
+        plan["metric_role"] = "load"
+        if "region" in columns:
+            values = unique_values.get("region", [])
+            for value in values:
+                if str(value).split("_")[0].lower() in q_lower or str(value).lower() in q_lower:
+                    plan["filters"]["equals"]["region"] = value
+                    break
+        return _normalize_plan(plan, question)
+
+    if has_generation and "solar" in q_lower and any(term in q_lower for term in ["compare", "vs", "versus", "between", "قارن"]):
+        plan = base("generation_kwh", "compare")
+        plan["metric_role"] = "generation"
+        plan["question_type"] = "comparison"
+        plan["output_mode"] = "comparison"
+        if "region" in columns:
+            for value in unique_values.get("region", []):
+                if str(value).lower() in q_lower or str(value).split("_")[0].lower() in q_lower:
+                    plan["filters"]["equals"]["region"] = value
+                    break
+        return _normalize_plan(plan, question)
+
+    if has_generation and has_load and any(term in q_lower for term in ["net grid balance", "grid balance", "net balance", "surplus", "deficit", "صافي"]):
+        plan = base(None, "net_balance")
+        plan["question_type"] = "net_balance"
+        return _normalize_plan(plan, question)
+
+    if "curtailment" in q_lower:
+        plan = base("curtailment_flag", "count")
+        plan["question_type"] = "summary"
+        return _normalize_plan(plan, question)
+
+    return None
+
+
+def _apply_date_range_rules(plan: Dict[str, Any], question: str) -> Dict[str, Any]:
+    """
+    Deterministically resolves assessment-style date phrases and protects
+    against the LLM interpreting "March 12" as hour 12.
+    """
+    q_lower = question.lower()
+    exact_date_pattern = re.compile(
+        r"\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+([0-3]?\d)(?:st|nd|rd|th)?(?:,\s*2026)?\b"
+    )
+    exact_match = exact_date_pattern.search(q_lower)
+    if exact_match:
+        month_name, day_text = exact_match.groups()
+        month_num = MONTHS.get(month_name)
+        day = int(day_text)
+        if month_num and 1 <= day <= monthrange(2026, month_num)[1]:
+            date_value = f"2026-{month_num:02d}-{day:02d}"
+            plan.setdefault("filters", {})
+            plan["filters"]["date_range"] = {"start": date_value, "end": date_value}
+            # A calendar-day phrase like "March 12" must not become hour 12.
+            plan["filters"]["hours_filter"] = []
+            logger.info("Deterministic exact date_range applied: %s", date_value)
+            return plan
+
+    pattern = re.compile(
+        r"\b(?:(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|one|two|three|four|five)\s+week\s+of\s+"
+        r"|week\s+([1-5])\s+of\s+)"
+        r"(january|february|march|april|may|june|july|august|september|october|november|december)\b"
+    )
+    match = pattern.search(q_lower)
+    if not match:
+        return plan
+
+    ordinal_word, ordinal_digit, month_name = match.groups()
+    week_num = int(ordinal_digit) if ordinal_digit else ORDINAL_WEEKS.get(ordinal_word)
+    month_num = MONTHS.get(month_name)
+    if not week_num or not month_num:
+        return plan
+
+    year = 2026
+    last_day = monthrange(year, month_num)[1]
+    start_day = 1 if week_num == 1 else ((week_num - 1) * 7)
+    if start_day > last_day:
+        return plan
+
+    end_day = min(start_day + 7, last_day)
+    date_range = {
+        "start": f"{year}-{month_num:02d}-{start_day:02d}",
+        "end": f"{year}-{month_num:02d}-{end_day:02d}",
+    }
+    plan.setdefault("filters", {})
+    plan["filters"]["date_range"] = date_range
+    logger.info("Deterministic week date_range applied: %s", date_range)
+    return plan
 
 
 def _apply_hours_filter_rules(plan: Dict[str, Any], question: str) -> Dict[str, Any]:

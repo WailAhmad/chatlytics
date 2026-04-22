@@ -136,6 +136,24 @@ class TestResponseBuilder:
         answer = build_answer_text(result, plan, "UNSUPPORTED", "en")
         assert "fake_col" in answer
 
+    def test_build_trace_metadata(self):
+        from backend.services.response_builder import build_trace_metadata
+        plan = {
+            "operation": "average",
+            "metric": "load_kwh",
+            "filters": {
+                "equals": {"region": "North_District"},
+                "date_range": {"start": "2026-03-07", "end": "2026-03-14"},
+                "hours_filter": [8, 9],
+            },
+            "group_by": [],
+        }
+        result = {"result_type": "single_value", "records_used": 42}
+        trace = build_trace_metadata(plan, result)
+        assert trace["rows_considered"] == 42
+        assert "load_kwh" in trace["columns_used"]
+        assert any("region = North_District" in f for f in trace["filters"])
+
 
 # ── Execution Engine Tests ──
 
@@ -185,6 +203,27 @@ class TestExecutionEngine:
         expected_companion = float(grid_df.loc[peak_idx, "load_kwh"])
         assert result["summary_stats"]["companion_value"] == expected_companion
         assert "No fallback" in result["summary_stats"]["note"]
+
+    def test_peak_with_companion_hourly_sums(self):
+        from backend.services.execution_engine import _execute_peak_with_companion
+        df = pd.DataFrame({
+            "timestamp": pd.to_datetime([
+                "2026-03-12 12:00", "2026-03-12 12:00",
+                "2026-03-12 14:00", "2026-03-12 14:00",
+            ]),
+            "generation_kwh": [100.0, 90.0, 120.0, 110.0],
+            "load_kwh": [20.0, 30.0, 40.0, 50.0],
+        })
+        plan = {
+            "metric": "generation_kwh",
+            "companion_metric": "load_kwh",
+            "_peak_grain": "hourly",
+            "filters": {"equals": {}},
+        }
+        result = _execute_peak_with_companion(df, plan)
+        assert result["primary_value"] == 230.0
+        assert result["summary_stats"]["companion_value"] == 90.0
+        assert result["summary_stats"]["peak_hour"] == "14:00"
 
     def test_peak_companion_missing_metric(self, grid_df):
         from backend.services.execution_engine import _execute_peak_with_companion
@@ -267,6 +306,119 @@ class TestFilterValidator:
         }
         fixed = validate_and_fix_plan(plan, schema_profile)
         assert "region" in fixed["filters"]["equals"]
+
+    def test_maintenance_intent_is_deterministic(self, schema_profile):
+        from backend.services.filter_validator import apply_semantic_mappings
+        plan = {
+            "execution_path": "python",
+            "operation": "rank",
+            "metric": "load_kwh",
+            "filters": {"equals": {}, "date_range": {"start": None, "end": None}},
+            "group_by": [],
+        }
+        fixed = apply_semantic_mappings("Which assets had the highest maintenance hours during the month?", plan, schema_profile)
+        assert fixed["operation"] == "maintenance"
+        assert fixed["metric"] == "status_code"
+        assert fixed["group_by"] == ["asset_id"]
+
+    def test_solar_output_maps_to_generation_for_solar_assets(self, schema_profile):
+        from backend.services.filter_validator import apply_semantic_mappings
+        plan = {
+            "execution_path": "python",
+            "operation": "compare",
+            "metric": "solar_output",
+            "filters": {"equals": {}, "date_range": {"start": None, "end": None}},
+            "group_by": [],
+            "question_type": "comparison",
+        }
+        fixed = apply_semantic_mappings("Compare solar output during business hours vs off-peak hours", plan, schema_profile)
+        assert fixed["metric"] == "generation_kwh"
+        assert any(sf["type"] == "text_contains" and sf["column"] == "asset_id" for sf in fixed["_semantic_filters"])
+        assert fixed["_semantic_comparison"]["type"] == "peak_vs_offpeak"
+
+    def test_region_mention_is_mapped(self, schema_profile):
+        from backend.services.filter_validator import apply_semantic_mappings
+        plan = {
+            "execution_path": "python",
+            "operation": "average",
+            "metric": "load_kwh",
+            "filters": {"equals": {}, "date_range": {"start": None, "end": None}},
+            "group_by": [],
+        }
+        fixed = apply_semantic_mappings("Compare solar output in the North_District", plan, schema_profile)
+        assert fixed["filters"]["equals"]["region"] == "North_District"
+
+
+# ── Query Planner Deterministic Rule Tests ──
+
+class TestQueryPlannerRules:
+    """Tests for deterministic post-processing that does not call the LLM."""
+
+    def test_second_week_of_march_is_seven_days(self):
+        from backend.services.query_planner import _apply_date_range_rules
+        plan = {
+            "filters": {
+                "equals": {},
+                "date_range": {"start": "2026-03-07", "end": "2026-03-14"},
+                "hours_filter": [],
+            }
+        }
+        fixed = _apply_date_range_rules(plan, "average load in the second week of March")
+        assert fixed["filters"]["date_range"] == {"start": "2026-03-07", "end": "2026-03-14"}
+
+    def test_week_2_of_march_is_seven_days(self):
+        from backend.services.query_planner import _apply_date_range_rules
+        plan = {"filters": {"equals": {}, "date_range": {"start": None, "end": None}, "hours_filter": []}}
+        fixed = _apply_date_range_rules(plan, "week 2 of March")
+        assert fixed["filters"]["date_range"] == {"start": "2026-03-07", "end": "2026-03-14"}
+
+    def test_exact_month_day_clears_hallucinated_hour_filter(self):
+        from backend.services.query_planner import _apply_date_range_rules
+        plan = {"filters": {"equals": {}, "date_range": {"start": None, "end": None}, "hours_filter": [12]}}
+        fixed = _apply_date_range_rules(plan, "On March 12, which hour had the highest generation?")
+        assert fixed["filters"]["date_range"] == {"start": "2026-03-12", "end": "2026-03-12"}
+        assert fixed["filters"]["hours_filter"] == []
+
+    def test_deterministic_fallback_handles_maintenance(self, schema_profile):
+        from backend.services.query_planner import _build_deterministic_plan
+        plan = _build_deterministic_plan("Which assets had the highest maintenance hours during the month?", schema_profile)
+        assert plan["operation"] == "maintenance"
+        assert plan["metric"] == "status_code"
+        assert plan["group_by"] == ["asset_id"]
+        assert plan["_planner_fallback"] == "deterministic_rule"
+
+    def test_deterministic_fallback_handles_peak_hour(self, schema_profile):
+        from backend.services.query_planner import _build_deterministic_plan
+        plan = _build_deterministic_plan(
+            "On March 12, which hour had the highest generation and what was the load at that time?",
+            schema_profile,
+        )
+        assert plan["operation"] == "peak_with_companion"
+        assert plan["metric"] == "generation_kwh"
+        assert plan["companion_metric"] == "load_kwh"
+        assert plan["_peak_grain"] == "hourly"
+        assert plan["filters"]["date_range"] == {"start": "2026-03-12", "end": "2026-03-12"}
+
+    def test_deterministic_fallback_handles_net_grid_balance(self, schema_profile):
+        from backend.services.query_planner import _build_deterministic_plan
+        plan = _build_deterministic_plan("What was the net grid balance in March?", schema_profile)
+        assert plan["operation"] == "net_balance"
+        assert plan["metric"] is None
+
+    def test_deterministic_fallback_handles_missing_curtailment_column(self, schema_profile):
+        from backend.services.query_planner import _build_deterministic_plan
+        plan = _build_deterministic_plan("What is the curtailment flag trend?", schema_profile)
+        assert plan["metric"] == "curtailment_flag"
+        assert plan["operation"] == "count"
+
+    def test_plan_cache_round_trip(self, schema_profile):
+        from backend.services.query_planner import _build_plan_cache_key, _get_cached_plan, _set_cached_plan
+        key = _build_plan_cache_key("question", schema_profile, "en", None)
+        plan = {"operation": "average", "filters": {"equals": {}}}
+        _set_cached_plan(key, plan)
+        cached = _get_cached_plan(key)
+        cached["operation"] = "sum"
+        assert _get_cached_plan(key)["operation"] == "average"
 
 
 # ── Chart Engine Guard Tests ──

@@ -237,8 +237,12 @@ def generate_enrichment(
             grouped_result = execution_result.get("grouped_result", [])
             summary_stats = execution_result.get("summary_stats", {})
             records_used = execution_result.get("records_used", 0)
+            records_used = execution_result.get("records_used", 0)
+            applied_filters = execution_result.get("applied_filters", {})
             exec_context = f"""
             Execution Path: {plan.get('execution_path')}
+            Operation: {plan.get('operation')}
+            Applied Filters: {json.dumps(applied_filters)}
             Primary Value: {primary_value} {unit}
             Records Used: {records_used}
             Summary Stats: {json.dumps(summary_stats)}
@@ -280,6 +284,8 @@ Your job is to explain this result using ONLY the numbers in the execution paylo
 === STRICT RULES ===
 1. NEVER compute, infer, or estimate any value. Use only numbers from the execution payload.
 2. answer_text: 2-3 paragraphs. Every paragraph must contain at least one specific number from the execution result.
+   - IMPORTANT: If the user asks for a trend or "spikes", and `peak_day` or `lowest_day` is present in the Summary Stats, you MUST explicitly mention the peak day and its value as the spike.
+   - IMPORTANT: If the user's question asks HOW a calculation was performed, or asks for an explanation of the steps (e.g., "explain how you calculated"), you MUST explicitly list the calculation steps taken (what was filtered, what was summed/averaged, and the final value) in simple language.
 3. key_insights: 2-3 insights. Each MUST:
    - Reference a specific number from the execution payload
    - Provide a non-obvious observation (e.g., comparing mean vs median for skew)

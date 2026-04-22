@@ -176,6 +176,7 @@ async def ask(body: AskRequest):
         from backend.services.validator import validate_plan as validate_metrics, build_unsupported_response
         is_valid, invalid_reason, suggestion = validate_metrics(plan, schema_profile)
         if not is_valid:
+            plan["_available_columns"] = schema_profile.get("columns", [])
             execution_result = build_unsupported_response(invalid_reason, suggestion, plan)
             execution_path = "python"
         else:
@@ -194,12 +195,14 @@ async def ask(body: AskRequest):
     # ══════════════════════════════════════════════════════════════
     from backend.services.response_builder import (
         build_aggregation_string, build_answer_text,
-        build_calculation_steps, build_formula_with_values
+        build_calculation_steps, build_formula_with_values,
+        build_trace_metadata
     )
     aggregation_string = ""
     deterministic_answer = None
     calculation_steps: list = []
     formula_with_values = ""
+    trace_metadata = {}
     records_used = None
 
     if execution_result and execution_result.get("result_type") not in ("empty", None):
@@ -207,6 +210,7 @@ async def ask(body: AskRequest):
         deterministic_answer = build_answer_text(execution_result, plan, aggregation_string, body.language)
         calculation_steps = build_calculation_steps(execution_result, plan, body.language)
         formula_with_values = build_formula_with_values(execution_result, plan)
+        trace_metadata = build_trace_metadata(plan, execution_result)
         records_used = execution_result.get("records_used")
 
     # Build core chart from execution payload (deterministic, no LLM)
@@ -229,6 +233,7 @@ async def ask(body: AskRequest):
             "unit": execution_result.get("unit", "") if execution_result else "",
             "result_type": execution_result.get("result_type", "explanation") if execution_result else "explanation",
             "answer_type": execution_path,
+            "trace": trace_metadata,
         },
         "chart": core_chart_spec,
         "insights": {
@@ -238,6 +243,7 @@ async def ask(body: AskRequest):
                 "calculation_steps": calculation_steps,
                 "formula_with_values": formula_with_values,
                 "records_used": records_used,
+                "trace": trace_metadata,
             }
         },
         "anomalies": [],
@@ -257,6 +263,16 @@ async def ask(body: AskRequest):
 
     if plan.get("_filter_corrections"):
         core_response.setdefault("verification", {})["filter_corrections"] = plan["_filter_corrections"]
+
+    if plan.get("_planner_fallback"):
+        core_response.setdefault("verification", {})["planner_fallback"] = plan["_planner_fallback"]
+    if plan.get("_plan_cache_hit"):
+        core_response.setdefault("verification", {})["plan_cache_hit"] = True
+
+    if execution_result and execution_result.get("result_type") == "unsupported_metric":
+        stats = execution_result.get("summary_stats", {})
+        core_response["answer"]["error"] = stats.get("unsupported_reason", "Unsupported query.")
+        core_response["answer"]["available_columns"] = stats.get("available_columns", [])
 
     # ══════════════════════════════════════════════════════════════
     # OPTIONAL ENHANCEMENT LAYER (LLM — additive only, never destructive)
@@ -290,7 +306,16 @@ async def ask(body: AskRequest):
         core_response["answer"]["summary"] = empty_msg
         core_response["answer"]["headline"] = "لا توجد نتائج" if is_ar else "No Results Found"
 
-    if not is_empty:
+    skip_llm_enrichment = bool(plan.get("_planner_fallback") or plan.get("_plan_cache_hit"))
+    if skip_llm_enrichment and not is_empty:
+        fallback_summary = deterministic_answer or "Deterministic result returned without LLM enrichment."
+        core_response["answer"]["summary"] = fallback_summary
+        core_response["humanized_chat_answer"] = fallback_summary
+        core_response.setdefault("verification", {})["llm_enrichment_skipped"] = (
+            "planner_fallback_or_cache_hit"
+        )
+
+    if not is_empty and not skip_llm_enrichment:
       try:
         from backend.services.enrichment_engine import generate_enrichment
         enriched = generate_enrichment(body.question, df, schema_profile, plan, execution_result, body.language)

@@ -295,6 +295,62 @@ def build_formula_with_values(
     return f"{operation}({metric}) = {val} {unit}"
 
 
+def build_trace_metadata(
+    plan: Dict[str, Any],
+    execution_result: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Build structured trace metadata for reviewer-facing reproducibility."""
+    filters = plan.get("filters", {}) or {}
+    equals = filters.get("equals", {}) or {}
+    date_range = filters.get("date_range", {}) or {}
+    hours = filters.get("hours_filter", []) or []
+    semantic_filters = plan.get("_semantic_filters", []) or []
+    operation = plan.get("operation", "unknown")
+    metric = plan.get("metric")
+    companion = plan.get("companion_metric")
+    group_by = plan.get("group_by", []) or []
+    if isinstance(group_by, str):
+        group_by = [group_by]
+
+    filter_descriptions = []
+    for key, value in equals.items():
+        filter_descriptions.append(f"{key} = {value}")
+    if date_range.get("start") or date_range.get("end"):
+        filter_descriptions.append(
+            f"date between {date_range.get('start') or 'start'} and {date_range.get('end') or 'end'}"
+        )
+    if hours:
+        filter_descriptions.append(f"hour in {hours}")
+    for sf in semantic_filters:
+        if sf.get("type") == "text_contains":
+            filter_descriptions.append(f"{sf.get('column')} contains '{sf.get('contains')}'")
+        elif sf.get("type") == "hour_range":
+            filter_descriptions.append(f"hour in {sf.get('hours')} ({sf.get('label')})")
+
+    columns_used = []
+    for col in [metric, companion, *group_by, *equals.keys()]:
+        if col and col not in columns_used:
+            columns_used.append(col)
+    if operation == "maintenance" and "status_code" not in columns_used:
+        columns_used.append("status_code")
+    if operation == "net_balance":
+        for col in ["generation_kwh", "load_kwh"]:
+            if col not in columns_used:
+                columns_used.append(col)
+    for sf in semantic_filters:
+        col = sf.get("column")
+        if col and col not in columns_used:
+            columns_used.append(col)
+
+    return {
+        "filters": filter_descriptions,
+        "operation": build_aggregation_string(plan, execution_result),
+        "rows_considered": execution_result.get("records_used", 0),
+        "columns_used": columns_used,
+        "result_type": execution_result.get("result_type"),
+    }
+
+
 def build_answer_text(
     execution_result: Dict[str, Any],
     plan: Dict[str, Any],

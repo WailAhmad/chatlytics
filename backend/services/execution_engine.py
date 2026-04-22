@@ -103,7 +103,7 @@ def _build_summary_stats(filtered_df: pd.DataFrame, metric: str, datetime_cols: 
 
 def _execute_maintenance(df: pd.DataFrame, plan: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Count maintenance periods using status_code == 505 ONLY.
+    Count maintenance hours using status_code == 505 ONLY.
     Never infers maintenance from load or generation.
     """
     if "status_code" not in df.columns:
@@ -140,7 +140,7 @@ def _execute_maintenance(df: pd.DataFrame, plan: Dict[str, Any]) -> Dict[str, An
     return {
         "result_type": "table",
         "primary_value": primary_value,
-        "unit": "maintenance periods",
+        "unit": "maintenance hours",
         "records_used": len(df),
         "applied_filters": plan.get("filters", {}),
         "grouped_result": grouped_result,
@@ -148,6 +148,7 @@ def _execute_maintenance(df: pd.DataFrame, plan: Dict[str, Any]) -> Dict[str, An
         "summary_stats": {
             "operation_used": "count(status_code=505)",
             "total_maintenance_periods": int(len(maint_df)),
+            "total_maintenance_hours": int(len(maint_df)),
         }
     }
 
@@ -280,12 +281,59 @@ def _execute_peak_with_companion(df: pd.DataFrame, plan: Dict[str, Any]) -> Dict
             "summary_stats": {"unsupported_reason": f"Companion metric '{companion}' not found."}
         }
 
+    dt_cols = df.select_dtypes(include=["datetime64[ns]"]).columns
+    if plan.get("_peak_grain") == "hourly" and len(dt_cols) > 0:
+        dt_col = dt_cols[0]
+        hourly = (
+            df.assign(__hour=df[dt_col].dt.floor("h"))
+              .groupby("__hour", as_index=False)
+              .agg({metric: "sum", companion: "sum"})
+        )
+        if len(hourly) == 0:
+            return {
+                "result_type": "empty",
+                "primary_value": None,
+                "unit": "",
+                "records_used": 0,
+                "applied_filters": plan.get("filters", {}),
+                "grouped_result": [],
+                "chart_data": [],
+                "summary_stats": {"empty_reason": "No hourly records available after filtering."}
+            }
+
+        peak_idx = hourly[metric].idxmax()
+        peak_row = hourly.loc[peak_idx]
+        peak_val = float(peak_row[metric])
+        companion_val = float(peak_row[companion]) if pd.notna(peak_row[companion]) else None
+        peak_ts = str(peak_row["__hour"])
+        hour_label = pd.to_datetime(peak_row["__hour"]).strftime("%H:00")
+        unit = _infer_unit(metric)
+        return {
+            "result_type": "single_value",
+            "primary_value": peak_val,
+            "unit": unit,
+            "records_used": len(df),
+            "applied_filters": plan.get("filters", {}),
+            "grouped_result": [],
+            "chart_data": [
+                {"name": metric, "value": peak_val},
+                {"name": companion, "value": companion_val or 0},
+            ],
+            "summary_stats": {
+                "operation_used": f"hourly_sum_at_max({metric})[{companion}]",
+                "peak_value": peak_val,
+                "companion_value": companion_val,
+                "peak_timestamp": peak_ts,
+                "peak_hour": hour_label,
+                "note": "Values are hourly sums across all matching assets."
+            }
+        }
+
     peak_idx = df[metric].idxmax()
     peak_row = df.loc[peak_idx]
     peak_val = float(peak_row[metric])
     companion_val = float(peak_row[companion]) if pd.notna(peak_row[companion]) else None
 
-    dt_cols = df.select_dtypes(include=["datetime64[ns]"]).columns
     peak_ts = str(peak_row[dt_cols[0]]) if len(dt_cols) > 0 else "unknown"
 
     unit = _infer_unit(metric)
@@ -350,6 +398,13 @@ def execute_query_plan(df: pd.DataFrame, plan: Dict[str, Any], schema_profile: D
             if len(datetime_cols) > 0:
                 dt_col = datetime_cols[0]
                 filtered_df = filtered_df[filtered_df[dt_col].dt.hour.isin(sf["hours"])]
+        elif sf["type"] == "text_contains":
+            col = sf.get("column")
+            needle = str(sf.get("contains", "")).lower()
+            if col in filtered_df.columns and needle:
+                filtered_df = filtered_df[
+                    filtered_df[col].astype(str).str.lower().str.contains(needle, na=False)
+                ]
 
     # Handle semantic comparison (peak vs off-peak, morning vs evening)
     sem_compare = plan.get("_semantic_comparison")
@@ -440,6 +495,48 @@ def execute_query_plan(df: pd.DataFrame, plan: Dict[str, Any], schema_profile: D
                     "ratio": ratio,
                 }
             }
+            
+    group_by = plan.get("group_by", [])
+    if isinstance(group_by, str):
+        group_by = [group_by]
+        
+    # Handle direct two-metric comparison (e.g. generation vs load)
+    op = plan.get("operation", "sum").lower()
+    is_compare = op == "compare" or plan.get("question_type") == "comparison"
+    companion_metric = plan.get("companion_metric")
+    metric = plan.get("metric")
+    if is_compare and companion_metric and metric and companion_metric in filtered_df.columns and metric in filtered_df.columns:
+        pd_op = "sum" if op == "compare" else {"average": "mean", "avg": "mean", "mean": "mean", "sum": "sum", "max": "max", "min": "min", "count": "count"}.get(op, "sum")
+        
+        # If no group_by, just compare totals/averages
+        if not group_by:
+            val_a = round(float(filtered_df[metric].agg(pd_op)), 2)
+            val_b = round(float(filtered_df[companion_metric].agg(pd_op)), 2)
+            
+            chart_data = [
+                {"name": metric, "value": val_a},
+                {"name": companion_metric, "value": val_b},
+            ]
+            
+            delta = round(val_a - val_b, 2)
+            
+            return {
+                "result_type": "table",
+                "primary_value": val_a,
+                "unit": _infer_unit(metric),
+                "records_used": len(filtered_df),
+                "applied_filters": plan.get("filters", {}),
+                "grouped_result": chart_data,
+                "chart_data": chart_data,
+                "summary_stats": {
+                    "operation_used": pd_op,
+                    f"{metric}_value": val_a,
+                    f"{companion_metric}_value": val_b,
+                    "delta": delta,
+                    "ratio": round(val_a / val_b, 2) if val_b != 0 else 0
+                }
+            }
+
     elif sem_compare and sem_compare.get("type") == "peak_vs_normal_days":
         metric = plan.get("metric")
         if metric and metric in filtered_df.columns:
@@ -525,10 +622,6 @@ def execute_query_plan(df: pd.DataFrame, plan: Dict[str, Any], schema_profile: D
 
     op = plan.get("operation", "sum").lower()
     metric = plan.get("metric")
-    group_by = plan.get("group_by", [])
-    if isinstance(group_by, str):
-        group_by = [group_by]
-
     op_map = {
         "average": "mean", "avg": "mean", "mean": "mean",
         "sum": "sum",
@@ -642,24 +735,52 @@ def execute_query_plan(df: pd.DataFrame, plan: Dict[str, Any], schema_profile: D
             gb_col = group_by[0]
             if gb_col in filtered_df.columns:
                 result_type = "timeseries" if is_trend else "table"
-                agg_df = filtered_df.groupby(gb_col)[metric].agg(pd_op).reset_index()
+                
+                is_compare = op == "compare" or plan.get("question_type") == "comparison"
+                companion_metric = plan.get("companion_metric")
+                
+                if is_compare and companion_metric and companion_metric in filtered_df.columns:
+                    agg_df = filtered_df.groupby(gb_col)[[metric, companion_metric]].agg(pd_op).reset_index()
+                    
+                    if not is_trend:
+                        sort_cfg = plan.get("sort", {})
+                        asc = sort_cfg.get("direction") == "asc"
+                        agg_df = agg_df.sort_values(by=metric, ascending=asc)
+                        limit = plan.get("limit", 10)
+                        if limit and limit > 0:
+                            agg_df = agg_df.head(limit)
+                            
+                    agg_df[gb_col] = agg_df[gb_col].astype(str)
+                    chart_data = []
+                    for _, row in agg_df.iterrows():
+                        chart_data.append({"name": str(row[gb_col]), "value": float(row[metric]), "series": metric})
+                        chart_data.append({"name": str(row[gb_col]), "value": float(row[companion_metric]), "series": companion_metric})
+                        
+                    primary_value = float(agg_df[metric].mean() if pd_op == "mean" else agg_df[metric].sum())
+                    grouped_result = agg_df.to_dict(orient="records")
+                    
+                    summary_stats[f"{metric}_total"] = round(float(agg_df[metric].sum()), 2)
+                    summary_stats[f"{companion_metric}_total"] = round(float(agg_df[companion_metric].sum()), 2)
+                    summary_stats["delta"] = round(summary_stats[f"{metric}_total"] - summary_stats[f"{companion_metric}_total"], 2)
+                else:
+                    agg_df = filtered_df.groupby(gb_col)[metric].agg(pd_op).reset_index()
 
-                # Sorting
-                sort_cfg = plan.get("sort", {})
-                asc = sort_cfg.get("direction") == "asc"
-                if not is_trend:
-                    agg_df = agg_df.sort_values(by=metric, ascending=asc)
+                    # Sorting
+                    sort_cfg = plan.get("sort", {})
+                    asc = sort_cfg.get("direction") == "asc"
+                    if not is_trend:
+                        agg_df = agg_df.sort_values(by=metric, ascending=asc)
 
-                limit = plan.get("limit", 10)
-                if limit and limit > 0 and not is_trend:
-                    agg_df = agg_df.head(limit)
+                    limit = plan.get("limit", 10)
+                    if limit and limit > 0 and not is_trend:
+                        agg_df = agg_df.head(limit)
 
-                agg_df[gb_col] = agg_df[gb_col].astype(str)
-                grouped_result = agg_df.to_dict(orient="records")
-                chart_data = agg_df.rename(columns={gb_col: "name", metric: "value"}).to_dict(orient="records")
+                    agg_df[gb_col] = agg_df[gb_col].astype(str)
+                    grouped_result = agg_df.to_dict(orient="records")
+                    chart_data = agg_df.rename(columns={gb_col: "name", metric: "value"}).to_dict(orient="records")
 
-                if chart_data:
-                    primary_value = float(chart_data[0]["value"])
+                    if chart_data:
+                        primary_value = float(chart_data[0]["value"])
 
                 # Enrich summary_stats for table/ranking
                 if result_type == "table" and len(chart_data) > 0:
