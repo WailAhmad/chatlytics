@@ -22,6 +22,67 @@ flowchart LR
     API --> Monitor["App Insights + Log Analytics"]
 ```
 
+## Detailed Component Architecture
+
+The diagram below expands the request flow into the full set of production subsystems, grouped by responsibility. Data flow runs left-to-right: telemetry lands in the data platform, user requests enter through the application tier, the planning layer produces a validated plan, deterministic execution computes the answer, and the response, cache, and observability tier handles persistence and instrumentation.
+
+```mermaid
+flowchart LR
+    subgraph Ingestion["1. Data Ingestion"]
+        Source["Grid Telemetry Sources<br/>API / SCADA Export / IoT Stream"]
+        IngestTier["IoT Hub / Event Hubs<br/>or Azure Data Factory"]
+        Source --> IngestTier
+    end
+
+    subgraph Platform["2. Data Platform"]
+        Lake["ADLS Gen2<br/>Raw + Curated Parquet"]
+        Registry["Dataset Registry<br/>Schema Contracts<br/>Business Glossary<br/>Access Rules"]
+        Profiler["Schema Profiler<br/>Columns, Types, Allowed Values"]
+        Lake --> Registry --> Profiler
+    end
+
+    subgraph Access["3. Application & Access"]
+        UI["Next.js UI<br/>Azure Static Web Apps"]
+        APIM["Azure API Management<br/>Auth, Throttling, Versioning"]
+        API["FastAPI Backend<br/>App Service / Container Apps"]
+        UI --> APIM --> API
+    end
+
+    subgraph Planning["4. Planning & Guardrails"]
+        Rules["Deterministic Rule Planner<br/>Known intents: maintenance, peak hours,<br/>net balance, date ranges"]
+        LLM["Azure OpenAI Planner<br/>Ambiguous NL → JSON Plan"]
+        Validator["Plan Validator<br/>Schema, Auth, Business Rules"]
+        Rules --> Validator
+        LLM --> Validator
+    end
+
+    subgraph Exec["5. Deterministic Execution"]
+        Engine["Analytics Engine<br/>pandas / DuckDB first"]
+        ScaleOut["Scale-Out Option<br/>Synapse / Fabric / ADX"]
+        Engine -. "Only when >10 GB,<br/>high concurrency,<br/>or low-latency dashboards" .-> ScaleOut
+    end
+
+    subgraph Response["6. Response, Cache & Observability"]
+        Resp["Traceable JSON Response<br/>Answer + Formula + Filters<br/>Rows + Columns"]
+        Cache["Azure Cache for Redis<br/>Plan / Profile / Session Cache"]
+        Vault["Azure Key Vault<br/>Secrets + Managed Identity"]
+        Insights["App Insights + Log Analytics<br/>Latency, Tokens, Failures, Eval Results"]
+    end
+
+    IngestTier --> Lake
+    Profiler --> API
+    API --> Rules
+    API --> LLM
+    Validator --> Engine
+    Engine --> Lake
+    Engine --> Resp
+    Resp --> UI
+    API --> Cache
+    API --> Vault
+    API --> Insights
+    Engine --> Insights
+```
+
 ## Data Ingestion and Governance
 
 The POC upload endpoint is useful for assessment review, but a real smart-grid system should not rely on manual CSV uploads. For hourly telemetry, the first production path should be:
