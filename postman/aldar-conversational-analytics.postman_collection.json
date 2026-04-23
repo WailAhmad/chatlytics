@@ -1,0 +1,212 @@
+{
+  "info": {
+    "name": "Aldar Conversational Analytics",
+    "description": "Natural-language analytics over smart-grid telemetry. The LLM produces a constrained JSON query plan; pandas performs all calculations. Every response is traceable (filters, operation, columns, rows considered, formula).\n\n**Base URL:** set the `baseUrl` variable (default `http://localhost:8000`).\n\n**Typical flow:**\n1. `GET /health` — confirm backend is running\n2. `POST /upload-csv` — upload `data/Smart_Grid_Master_March_2026.csv`\n3. `GET /profile` — inspect schema\n4. `POST /ask` — run assessment questions\n5. `POST /reset-session` — clear multi-turn state (optional)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "sessionId",
+      "value": "",
+      "type": "string",
+      "description": "Set automatically after the first /ask response via a test script."
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        },
+        "description": "Returns service status, git commit, working directory, and whether a dataset is loaded."
+      }
+    },
+    {
+      "name": "Upload CSV",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/upload-csv",
+          "host": ["{{baseUrl}}"],
+          "path": ["upload-csv"]
+        },
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": [],
+              "description": "Pick data/Smart_Grid_Master_March_2026.csv from the repo"
+            }
+          ]
+        },
+        "description": "Upload the dataset. Returns a schema profile (columns, types, row count, sample values) that the planner uses on subsequent /ask calls."
+      }
+    },
+    {
+      "name": "Get Profile",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/profile",
+          "host": ["{{baseUrl}}"],
+          "path": ["profile"]
+        },
+        "description": "Returns the cached schema profile of the currently active dataset."
+      }
+    },
+    {
+      "name": "Clear Dataset",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/clear-dataset",
+          "host": ["{{baseUrl}}"],
+          "path": ["clear-dataset"]
+        },
+        "description": "Clears the active dataset from memory. Next /ask will fail until a new CSV is uploaded."
+      }
+    },
+    {
+      "name": "Ask — Assessment Q1 (average load, North District, week 2)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body && body.session_id) {",
+              "  pm.collectionVariables.set('sessionId', body.session_id);",
+              "}",
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Has traceable answer', () => pm.expect(body.answer).to.have.property('trace'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/ask",
+          "host": ["{{baseUrl}}"],
+          "path": ["ask"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"question\": \"What was the average hourly load in North_District during the second week of March?\",\n  \"language\": \"en\"\n}"
+        },
+        "description": "Expected primary_value ≈ 48.56 kWh."
+      }
+    },
+    {
+      "name": "Ask — Assessment Q2 (peak generation March 12 + companion load)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/ask",
+          "host": ["{{baseUrl}}"],
+          "path": ["ask"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"question\": \"On March 12, which hour had the highest generation and what was the load at that time?\",\n  \"language\": \"en\"\n}"
+        },
+        "description": "Expected primary_value ≈ 528.92 kWh."
+      }
+    },
+    {
+      "name": "Ask — Assessment Q3 (maintenance hours ranking)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/ask",
+          "host": ["{{baseUrl}}"],
+          "path": ["ask"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"question\": \"Which assets had the highest maintenance hours during the month?\",\n  \"language\": \"en\"\n}"
+        },
+        "description": "Expected top asset: WIND_01. Maintenance is mapped deterministically to status_code == 505."
+      }
+    },
+    {
+      "name": "Ask — Assessment Q4 (solar business vs off-peak)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/ask",
+          "host": ["{{baseUrl}}"],
+          "path": ["ask"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"question\": \"Compare solar output in Central_Hub during business hours vs off-peak hours.\",\n  \"language\": \"en\"\n}"
+        },
+        "description": "Expected business-hours average ≈ 31.66 kWh. Peak hours 07–10 and 17–20 per the brief."
+      }
+    },
+    {
+      "name": "Ask — Follow-up (uses prior session context)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/ask",
+          "host": ["{{baseUrl}}"],
+          "path": ["ask"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"question\": \"And in Central_Hub?\",\n  \"language\": \"en\",\n  \"session_id\": \"{{sessionId}}\"\n}"
+        },
+        "description": "Sends a short follow-up that reuses filters (time range, metric) from the previous question via session_id captured in the first /ask response."
+      }
+    },
+    {
+      "name": "Session State",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/session-state?session_id={{sessionId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["session-state"],
+          "query": [{ "key": "session_id", "value": "{{sessionId}}" }]
+        },
+        "description": "Debug endpoint. Returns the multi-turn conversation state for the given session."
+      }
+    },
+    {
+      "name": "Reset Session",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/reset-session",
+          "host": ["{{baseUrl}}"],
+          "path": ["reset-session"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"session_id\": \"{{sessionId}}\"\n}"
+        },
+        "description": "Clears multi-turn memory for this session."
+      }
+    }
+  ]
+}

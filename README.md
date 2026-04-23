@@ -135,6 +135,12 @@ Preferred submission is a Git repository link so reviewers can inspect history a
 
 The script excludes local secrets and generated dependencies such as `.env`, `.git`, `backend/venv`, `web/node_modules`, `web/.next`, and `data/active_dataset.csv`. Reviewers should create their own `.env` from `.env.example` and set `GROQ_API_KEY` if they want LLM-backed open-ended planning.
 
+## Postman Collection
+
+A ready-to-import Postman collection is included at `postman/aldar-conversational-analytics.postman_collection.json`. It covers health, CSV upload, profile, the four assessment questions (each with expected values in the description), a session-aware follow-up, session inspection, and reset.
+
+**Import:** Postman → File → Import → pick the JSON file. The `baseUrl` variable defaults to `http://localhost:8000`. The first `/ask` call writes its `session_id` into the `sessionId` collection variable automatically, so the follow-up and reset requests work with no extra setup.
+
 ## Verification
 
 ```bash
