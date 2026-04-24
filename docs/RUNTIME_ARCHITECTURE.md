@@ -1,6 +1,10 @@
 # Runtime Architecture
 
-This diagram explains how the POC handles a user request end-to-end. It follows the exact sequence a request takes through the system, highlights every guardrail, and shows how the application prevents LLM hallucination in both math and interpretation.
+This document explains how the POC handles a user request end-to-end. It follows the exact sequence a request takes through the system, highlights every guardrail, and shows how the application prevents LLM hallucination in both math and interpretation.
+
+![Runtime Architecture and Guardrails](images/runtime-architecture.png)
+
+The diagram below is the code-accurate Mermaid version that renders natively on GitHub and stays in sync with the services in `backend/services/`.
 
 ```mermaid
 flowchart TD
