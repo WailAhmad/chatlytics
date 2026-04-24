@@ -13,7 +13,8 @@ A conversational analytics proof of concept built for the Aldar AI Architect ass
 │   └── tests/           # Regression + assessment-scenario tests (pytest, 43 passing)
 ├── web/                 # Next.js reviewer UI (chat, charts, calculation traces)
 ├── docs/
-│   └── ARCHITECTURE.md  # Part 2 Azure production architecture
+│   ├── ARCHITECTURE.md  # Part 2 Azure production architecture
+│   └── SUBMISSION_AUDIT.md # Assessment-readiness checklist
 ├── data/                # Uploaded datasets (gitignored active copy)
 ├── scripts/             # Local run + submission helpers
 ├── requirements.txt
@@ -40,6 +41,10 @@ Create a `.env` file for LLM-backed query planning:
 ```bash
 GROQ_API_KEY=your_key_here
 ```
+
+This key is optional for the assessment-critical path. The four example
+questions from the brief use deterministic planning first, so reviewers can run
+and verify the core demo without an LLM provider key.
 
 The calculation, validation, response-building, and chart layers are deterministic Python. The LLM is used to translate open-ended natural-language questions into a structured query plan and to optionally enrich the narrative summary.
 
@@ -135,11 +140,19 @@ Preferred submission is a Git repository link so reviewers can inspect history a
 
 The script excludes local secrets and generated dependencies such as `.env`, `.git`, `backend/venv`, `web/node_modules`, `web/.next`, and `data/active_dataset.csv`. Reviewers should create their own `.env` from `.env.example` and set `GROQ_API_KEY` if they want LLM-backed open-ended planning.
 
-## Postman Collection
+Authoritative repository: `https://github.com/WailAhmad/aldar-conversational-analytics`.
 
-A ready-to-import Postman collection is included at `postman/aldar-conversational-analytics.postman_collection.json`. It covers health, CSV upload, profile, the four assessment questions (each with expected values in the description), a session-aware follow-up, session inspection, and reset.
+See `docs/SUBMISSION_AUDIT.md` for a concise checklist showing how this project maps to the assessment brief.
 
-**Import:** Postman → File → Import → pick the JSON file. The `baseUrl` variable defaults to `http://localhost:8000`. The first `/ask` call writes its `session_id` into the `sessionId` collection variable automatically, so the follow-up and reset requests work with no extra setup.
+## One-Command Local Start
+
+To bring both backend and frontend up in two clean terminal windows (killing any stale processes first), use:
+
+```bash
+./scripts/start_demo.sh
+```
+
+This starts the backend on `http://localhost:8000` and the frontend on `http://localhost:3000`.
 
 ## Verification
 
@@ -147,4 +160,5 @@ A ready-to-import Postman collection is included at `postman/aldar-conversationa
 backend/venv/bin/python -m pytest backend/tests/test_assessment_scenarios.py -q
 backend/venv/bin/python -m pytest backend/tests/test_regression.py -q
 backend/venv/bin/python -m compileall backend -q
+cd web && npm run lint
 ```
