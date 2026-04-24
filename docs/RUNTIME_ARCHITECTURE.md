@@ -1,6 +1,6 @@
-# Interview Architecture Diagram
+# Runtime Architecture
 
-This diagram explains the application in the same sequence a user request follows. It is designed for an interview walkthrough: simple enough to explain quickly, but detailed enough to show the intelligence, checks, and guardrails behind every answer.
+This diagram explains how the POC handles a user request end-to-end. It follows the exact sequence a request takes through the system, highlights every guardrail, and shows how the application prevents LLM hallucination in both math and interpretation.
 
 ```mermaid
 flowchart TD
@@ -82,7 +82,7 @@ flowchart TD
 
 The visual story: most of the flow is green and yellow. The LLM (blue) is invoked in only two places, and both are sandwiched between guardrails. Red boxes are the refusal paths that prevent hallucinated answers.
 
-## Simple Interview Talk Track (top to bottom)
+## Request Flow (top to bottom)
 
 1. **User layer** — A user types a question in the Next.js UI. It hits `POST /ask` on the FastAPI backend.
 2. **Session layer** — The session store (20 turns, 2-hour TTL) provides context. The context resolver decides if the new question is brand new or a follow-up, and carries forward metric/filters/time-range when appropriate. This is what makes the tool conversational.
@@ -100,8 +100,8 @@ The visual story: most of the flow is green and yellow. The LLM (blue) is invoke
 3. **JSON-mode LLM** — The LLM is physically constrained to emit valid JSON.
 4. **Fuzzy filter validation** — 0.8 cutoff, abort rather than silently drop a user filter.
 5. **Semantic overrides** — Assessment-critical phrases are deterministically mapped.
-6. **Metric validation + traceability** — Missing columns return a structured unsupported response; every answer carries a verification block so drift is visible, not hidden.
+6. **Metric validation + traceability** — Missing columns return a structured unsupported response; every answer carries a verification block so any drift is visible, not hidden.
 
-## The One-Liner for the Interview
+## Summary
 
 > *"Count the boxes. Most of the system is green and deterministic. The LLM shows up in only two places, and both are sandwiched between yellow guardrails. Red boxes are the refusal paths — the system never fabricates an answer, it fails closed with a clear explanation. That is why every number is accurate, traceable, and reproducible."*
