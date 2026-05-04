@@ -149,19 +149,19 @@ export default function Dashboard() {
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0 bg-[#F8F9FA]">
           {/* Left: Branded Hero Area */}
           <div className="w-full lg:w-[60%] flex flex-col justify-center p-8 lg:p-16 min-h-0 bg-white relative shadow-[20px_0_40px_-20px_rgba(0,0,0,0.03)] overflow-hidden z-10">
-            {/* Aldar HQ HD Background (Transparent & Shaded) */}
+            {/* Hero Background (Transparent & Shaded) */}
             <div className="absolute inset-0 z-0 pointer-events-none flex items-center justify-center overflow-hidden">
-               <img 
-                 src="/aldar_hq.jpg" 
-                 alt="ALDAR HQ Skyline" 
+               <img
+                 src="/hero_bg.jpg"
+                 alt="Conversational analytics network"
                  className="w-full h-full object-cover scale-[1.3] opacity-[0.15] grayscale mix-blend-multiply"
                  onError={(e) => { e.currentTarget.style.display='none'; }}
                />
             </div>
-            
+
             <div className="max-w-xl mx-auto w-full relative z-10 pt-2 flex flex-col items-center text-center">
               <div className="w-[180px] h-[180px] bg-white border-[1.5px] border-gray-900/10 rounded-2xl flex items-center justify-center p-5 mb-8 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
-                <img src="/aldar_logo.png" alt="ALDAR" className="max-h-full max-w-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; }} />
+                <img src="/chatlytics_logo.jpg" alt="Chatlytics" className="max-h-full max-w-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; }} />
               </div>
               
               <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4 tracking-tight">

@@ -91,7 +91,7 @@ export function ActionZone({
         <div className="flex items-start justify-between">
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-3">
-              <img src="/aldar_logo.png" alt="ALDAR" className="h-10 w-auto object-contain" onError={(e) => { e.currentTarget.style.display='none'; }} />
+              <img src="/chatlytics_logo.jpg" alt="Chatlytics" className="h-10 w-auto object-contain" onError={(e) => { e.currentTarget.style.display='none'; }} />
               <h1 className="text-xl font-bold tracking-tight text-gray-900">{t.title}</h1>
             </div>
             <div className="flex items-center gap-2 text-gray-500">

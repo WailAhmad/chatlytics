@@ -21,7 +21,7 @@ export function InsightZone({ lang, stats, response }: { lang: Language; stats: 
       <div className="flex flex-col h-full items-center justify-center p-10 w-full bg-[#FAFAFA]">
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5 }} className="flex flex-col items-center justify-center max-w-md text-center">
           <div className="w-64 h-64 bg-white border border-gray-100 shadow-xl rounded-3xl flex items-center justify-center p-8 mb-8">
-            <img src="/aldar_logo.png" alt="ALDAR" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.parentElement!.innerHTML='<h2 class="font-bold tracking-widest text-4xl text-gray-900">ALDAR</h2>'; }} />
+            <img src="/chatlytics_logo.jpg" alt="Chatlytics" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.parentElement!.innerHTML='<h2 class="font-bold tracking-widest text-4xl text-gray-900">CHATLYTICS</h2>'; }} />
           </div>
           <h2 className="text-xl font-bold text-gray-900 tracking-tight">{t.emptyStateTitle}</h2>
           <p className="text-base text-gray-500 mt-2">{t.emptyStateSub}</p>

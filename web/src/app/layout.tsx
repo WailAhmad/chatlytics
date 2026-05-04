@@ -6,8 +6,8 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const tajawal = Tajawal({ weight: ["300", "400", "500", "700"], subsets: ["arabic"], variable: "--font-tajawal" });
 
 export const metadata: Metadata = {
-  title: "Aldar Conversational Analytics",
-  description: "Executive AI-powered smart grid insights",
+  title: "Chatlytics — Conversational Analytics",
+  description: "Open-source conversational analytics: ask questions in natural language, get deterministic answers backed by Python.",
 };
 
 export default function RootLayout({

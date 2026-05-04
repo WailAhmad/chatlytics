@@ -1,8 +1,8 @@
 """
 End-to-end assessment scenarios.
 
-These tests exercise the public /ask API with the four questions from the
-ALDAR brief and compare the response against pandas-computed ground truth.
+These tests exercise the public /ask API with the four sample analytics
+questions and compare the response against pandas-computed ground truth.
 They intentionally use deterministic planner paths, so they do not require an
 LLM API key or network access.
 """

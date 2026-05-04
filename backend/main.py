@@ -69,7 +69,7 @@ def health():
 
     return {
         "status": "ok",
-        "app": "aldar-conversational-analytics",
+        "app": "chatlytics",
         "commit": git_commit,
         "cwd": os.getcwd(),
         "dataset_loaded": has_active_dataset(),
