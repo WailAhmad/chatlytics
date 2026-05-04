@@ -52,41 +52,41 @@ Successful plans are cached briefly by `question + schema` to reduce repeat toke
 
 ## Running
 
-### Backend (FastAPI)
+### One-command local start (recommended)
 
-Recommended (kills any stale process on port `8000` first):
+```bash
+./scripts/start.sh
+```
+
+Runs both the backend and frontend **in a single terminal** with colour-coded output. Press `Ctrl+C` once to shut down both services.
+
+- Backend (FastAPI) → `http://localhost:8000`
+- Frontend (Next.js) → `http://localhost:3100`
+- Health check → `http://localhost:8000/health`
+
+The script automatically kills stale processes, installs npm dependencies if needed, and restores the last uploaded dataset across reloads.
+
+### Manual start (two terminals)
+
+**Backend:**
 
 ```bash
 ./scripts/restart_backend.sh
 ```
 
-Manual equivalent:
+Or directly:
 
 ```bash
 uvicorn backend.main:app --reload --port 8000
 ```
 
-The API will be available at `http://localhost:8000`. Health check: `http://localhost:8000/health`.
-
-The health response includes the running git commit and working directory. The backend restores the last uploaded dataset from `data/active_dataset.csv` across local reloads, so a code reload does not force you to re-upload.
-
-### Frontend (Next.js)
+**Frontend:**
 
 ```bash
 cd web
 npm install
 npm run dev
 ```
-
-The reviewer UI will be available at `http://localhost:3000`.
-
-### One-command local start
-
-```bash
-./scripts/start_demo.sh
-```
-
-Starts the backend on `http://localhost:8000` and the frontend on `http://localhost:3000` in two clean terminal windows.
 
 ## API Quickstart
 
