@@ -16,11 +16,55 @@ _Schema-driven AI Insights with deterministic Python verification._
 - **🎨 Premium UI.** Black & Electric Blue design system with 3D floating logo, animated network background, metallic gradient badges, and micro-animations.
 - **💬 Conversational Memory.** Multi-turn follow-up questions with session context tracking.
 
-### Arabic RTL Interface
+---
+
+## 🔍 Traceable & Deterministic Calculations
+
+Every answer shows **exactly how it was computed** — no black boxes. The Insight Panel reveals the full calculation trace so you can verify every step:
+
+![Traceable Calculation View](docs/images/analysis-traceable.png)
+
+**What you see in the Insight Panel (right side):**
+
+| Section | What It Shows |
+|---------|---------------|
+| **🏷️ Answer Insights** | AI-enriched narrative explaining the result with statistical context (mean, median, distribution shape) |
+| **✅ Result Badge** | The deterministic result highlighted in a green badge (e.g., `Result: 201.25 kWh`) |
+| **🔎 How your question was understood** | The metric, operation, question type, filters, and group-by that the LLM extracted from your natural language |
+| **💡 How the result was calculated** | Step-by-step numbered trace: filter → row count → operation → final result |
+| **📐 Formula Bar** | The exact pandas expression executed (e.g., `max(generation_kwh) = 201.25 kWh`) |
+| **📊 Records Used** | Total rows that passed the filters, proving completeness |
+| **⚙️ Advanced calculation details** | Expandable raw JSON with the full query plan for audit |
+
+---
+
+## 📊 AI-Enriched Answers with Charts & Multi-Turn Follow-Ups
+
+Ask follow-up questions that build on prior context. Chatlytics maintains conversational memory and generates interactive visualizations automatically:
+
+![Charts and Multi-Turn Analysis](docs/images/analysis-charts.png)
+
+**How it works:**
+
+1. **Ask a question** → _"Which region has the highest total energy generation?"_
+2. **Get a traceable answer** → The system filters, aggregates, and returns `North_District: 201.25 kWh` with full calculation steps
+3. **Follow up naturally** → _"What is the average for each district?"_
+4. **Receive enriched insights** → AI-generated narrative comparing districts, identifying distribution patterns (right-skewed, high-consumption outliers), plus an auto-generated **bar chart** for visual comparison
+5. **Full formula transparency** → `mean(load_kwh) = 209992.16 ÷ 3720 = 68.4 kWh`
+
+> Every chart is backed by the actual pandas computation — what you see in the chart matches the deterministic calculation trace, not an LLM approximation.
+
+---
+
+## 🌍 Full Arabic RTL Interface
+
+Complete right-to-left layout with translated labels, flipped panels, and direction-aware components:
 
 ![Arabic RTL Interface](docs/images/arabic-rtl.png)
 
-_Full right-to-left layout with translated labels, flipped panels, and direction-aware components._
+The entire UI flips when switching to Arabic — header branding moves right, the upload panel moves left, capability badges reverse icon positions, and all text aligns properly for native Arabic reading flow.
+
+---
 
 ## Architecture
 
