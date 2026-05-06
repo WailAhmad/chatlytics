@@ -1,19 +1,32 @@
 # Chatlytics
 
-An open-source conversational analytics tool. Ask analytics questions in natural language; the backend converts them into structured query plans, executes the calculations deterministically with pandas, and returns a traceable JSON response with charts and a narrative summary.
+**AI-Powered Conversational Analytics Copilot** — Ask analytics questions in natural language; the backend converts them into structured query plans, executes calculations deterministically with pandas, and returns traceable JSON responses with charts and narrative summaries.
+
+![Chatlytics Landing Page](docs/images/landing-page.png)
+
+_Schema-driven AI Insights with deterministic Python verification._
+
+## ✨ Key Features
+
+- **🧠 LLM for planning, Python for math.** The LLM maps natural language to a JSON query plan; pandas performs the actual filters, aggregations, comparisons, and rankings — no hallucinated numbers.
+- **🔍 Traceable answers.** Every response includes the operation, filters, columns used, and rows considered so a reviewer can see how the answer was derived.
+- **📊 Smart Data Profiling.** Uploaded datasets are automatically profiled with quality metrics, distribution analysis, correlations, anomaly detection, and AI-generated insights.
+- **🗄️ Multiple Data Sources.** File upload (CSV, XLSX, XLS) and secure database connections (MySQL, PostgreSQL, Oracle, MongoDB, DuckDB, and more).
+- **🌍 Full Bilingual RTL Support.** English / Arabic toggle with complete right-to-left layout, including flipped panels, icons, and text alignment.
+- **🎨 Premium UI.** Black & Electric Blue design system with 3D floating logo, animated network background, metallic gradient badges, and micro-animations.
+- **💬 Conversational Memory.** Multi-turn follow-up questions with session context tracking.
+
+### Arabic RTL Interface
+
+![Arabic RTL Interface](docs/images/arabic-rtl.png)
+
+_Full right-to-left layout with translated labels, flipped panels, and direction-aware components._
+
+## Architecture
 
 ![Runtime Architecture and Guardrails](docs/images/runtime-architecture.png)
 
 _LLM for language understanding, Python for deterministic analytics. See [docs/RUNTIME_ARCHITECTURE.md](docs/RUNTIME_ARCHITECTURE.md) for the full walkthrough._
-
-![Chatlytics landing page](docs/images/landing-page.png)
-
-## Why Chatlytics
-
-- **LLM for planning, Python for math.** The LLM maps natural language to a JSON query plan; pandas performs the actual filters, aggregations, comparisons, and rankings — no hallucinated numbers.
-- **Traceable answers.** Every response includes the operation, filters, columns used, and rows considered so a reviewer can see how the answer was derived.
-- **Schema-aware.** Uploaded CSVs are profiled before planning. Missing-column questions return structured "unsupported" responses instead of fabricated answers.
-- **Bilingual UI.** English / Arabic toggle in the Next.js reviewer interface.
 
 ## Project Structure
 
@@ -23,6 +36,8 @@ _LLM for language understanding, Python for deterministic analytics. See [docs/R
 │   ├── services/        # Query planner, execution engine, validators, response builder
 │   └── tests/           # Regression + scenario tests (pytest)
 ├── web/                 # Next.js reviewer UI (chat, charts, calculation traces)
+│   ├── src/app/         # Main page with landing hero + analysis split view
+│   └── src/components/  # ActionZone, InsightZone, DatasetProfiler, NetworkCanvas
 ├── docs/
 │   ├── ARCHITECTURE.md          # Production architecture discussion
 │   └── RUNTIME_ARCHITECTURE.md  # Runtime data flow and guardrails
