@@ -5,3 +5,5 @@ python-dateutil
 python-dotenv
 groq
 python-multipart
+pymysql
+sqlalchemy

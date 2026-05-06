@@ -110,3 +110,43 @@ export async function clearDataset(): Promise<boolean> {
     return false;
   }
 }
+
+export interface DbConnectionParams {
+  db_type: string;
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password: string;
+  table_name?: string;
+  query?: string;
+  row_limit?: number;
+}
+
+export async function listTables(params: Omit<DbConnectionParams, 'table_name' | 'query' | 'row_limit'>): Promise<{ status: number; data: any }> {
+  try {
+    const res = await fetch(`${API_BASE}/list-tables`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    });
+    const data = await res.json();
+    return { status: res.status, data };
+  } catch (error: any) {
+    return { status: 500, data: { detail: error.message || "Failed to connect to database." } };
+  }
+}
+
+export async function connectDatabase(params: DbConnectionParams): Promise<{ status: number; data: any }> {
+  try {
+    const res = await fetch(`${API_BASE}/connect-db`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    });
+    const data = await res.json();
+    return { status: res.status, data };
+  } catch (error: any) {
+    return { status: 500, data: { detail: error.message || "Failed to connect to database." } };
+  }
+}

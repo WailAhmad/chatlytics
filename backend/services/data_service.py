@@ -28,11 +28,29 @@ def set_active_dataset(filepath: str):
 
 
 def clear_active_dataset():
-    """Remove the active dataset from memory (does not delete the file)."""
+    """Remove the active dataset from memory AND delete the cached file."""
     global ACTIVE_DATA_PATH, _ACTIVE_DF, _ACTIVE_PATH
     ACTIVE_DATA_PATH = None
     _ACTIVE_DF = None
     _ACTIVE_PATH = None
+    # Delete the cached CSV file so it won't auto-reload on refresh
+    if os.path.exists(LAST_UPLOADED_DATASET):
+        try:
+            os.remove(LAST_UPLOADED_DATASET)
+        except OSError:
+            pass
+
+
+def set_active_dataframe(df: pd.DataFrame, source_label: str = "database"):
+    """Set a DataFrame directly as the active dataset (used for DB connections).
+    Also saves a CSV copy so the existing pipeline works seamlessly."""
+    global ACTIVE_DATA_PATH, _ACTIVE_DF, _ACTIVE_PATH
+    os.makedirs(DATA_DIR, exist_ok=True)
+    csv_path = os.path.join(DATA_DIR, "active_dataset.csv")
+    df.to_csv(csv_path, index=False)
+    ACTIVE_DATA_PATH = csv_path
+    _ACTIVE_DF = df
+    _ACTIVE_PATH = csv_path
 
 
 def has_active_dataset() -> bool:

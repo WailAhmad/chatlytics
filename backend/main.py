@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from backend.services.data_service import set_active_dataset, get_active_dataframe, clear_active_dataset, has_active_dataset
+from backend.services.data_service import set_active_dataset, get_active_dataframe, clear_active_dataset, has_active_dataset, set_active_dataframe
 from backend.services.schema_profiler import profile_dataframe
 from backend.services.query_planner import generate_query_plan
 from backend.services.filter_validator import validate_and_fix_plan, apply_semantic_mappings
@@ -43,6 +43,27 @@ class ResetRequest(BaseModel):
     session_id: str
 
 
+class DbConnectionRequest(BaseModel):
+    db_type: str  # "mysql" or "sqlserver"
+    host: str
+    port: int
+    database: str
+    username: str
+    password: str
+    table_name: Optional[str] = None
+    query: Optional[str] = None
+    row_limit: int = 50000
+
+
+class ListTablesRequest(BaseModel):
+    db_type: str
+    host: str
+    port: int
+    database: str
+    username: str
+    password: str
+
+
 app = FastAPI(title="Conversational Analytics Copilot")
 
 app.add_middleware(
@@ -52,6 +73,85 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _build_db_url(params) -> str:
+    """Build a SQLAlchemy connection URL."""
+    if params.db_type == "mysql":
+        return f"mysql+pymysql://{params.username}:{params.password}@{params.host}:{params.port}/{params.database}"
+    elif params.db_type == "sqlserver":
+        # Try pymssql first, fallback guidance in error
+        return f"mssql+pymssql://{params.username}:{params.password}@{params.host}:{params.port}/{params.database}"
+    else:
+        raise ValueError(f"Unsupported database type: {params.db_type}. Use 'mysql' or 'sqlserver'.")
+
+
+@app.post("/list-tables")
+async def list_tables(body: ListTablesRequest):
+    """Connect to a database and list available tables."""
+    try:
+        from sqlalchemy import create_engine, inspect
+        url = _build_db_url(body)
+        engine = create_engine(url, connect_args={"connect_timeout": 10})
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        engine.dispose()
+        return {"status": "ok", "tables": tables}
+    except Exception as e:
+        logger.error(f"Failed to list tables: {e}")
+        raise HTTPException(status_code=400, detail=f"Connection failed: {str(e)}")
+
+
+@app.post("/connect-db")
+async def connect_db(body: DbConnectionRequest):
+    """Connect to a database, fetch data from a table, and load it for analysis."""
+    global _cached_upload_summary
+    try:
+        import pandas as pd
+        from sqlalchemy import create_engine, text
+
+        url = _build_db_url(body)
+        engine = create_engine(url, connect_args={"connect_timeout": 15})
+
+        if body.query:
+            sql = body.query
+        elif body.table_name:
+            sql = f"SELECT * FROM `{body.table_name}` LIMIT {body.row_limit}"
+            if body.db_type == "sqlserver":
+                sql = f"SELECT TOP {body.row_limit} * FROM [{body.table_name}]"
+        else:
+            raise HTTPException(status_code=400, detail="Provide either table_name or query.")
+
+        logger.info(f"Executing DB query: {sql[:200]}...")
+        with engine.connect() as conn:
+            df = pd.read_sql(text(sql), conn)
+        engine.dispose()
+
+        if df.empty:
+            raise HTTPException(status_code=400, detail="Query returned no data.")
+
+        logger.info(f"Loaded {len(df)} rows × {len(df.columns)} columns from {body.db_type}://{body.host}/{body.database}")
+
+        # Strip whitespace from string columns
+        for col in df.select_dtypes(include=['object']).columns:
+            df[col] = df[col].str.strip()
+
+        set_active_dataframe(df, source_label=f"{body.db_type}:{body.database}.{body.table_name or 'query'}")
+        profile = profile_dataframe(df)
+
+        from backend.services.enrichment_engine import generate_upload_summary
+        summary = generate_upload_summary(df, profile, language="en")
+        _cached_upload_summary = summary
+        profile["upload_summary"] = summary
+        profile["source"] = f"{body.db_type}://{body.host}/{body.database}/{body.table_name or 'custom_query'}"
+
+        return {"message": f"Connected and loaded {len(df)} rows from {body.db_type}", "profile": profile}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Database connection failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 
 @app.get("/health")

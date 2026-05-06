@@ -27,7 +27,7 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
   const dtCols = cols.filter(([_, data]: any) => data.type === "datetime");
 
   return (
-    <div className="flex flex-col gap-8 w-full max-w-[1400px] mx-auto p-4 lg:p-6 bg-gray-50/30">
+    <div dir={isAr ? "rtl" : "ltr"} className={`flex flex-col gap-8 w-full max-w-[1400px] mx-auto p-4 lg:p-6 bg-gray-50/30 ${isAr ? 'text-right' : 'text-left'}`}>
       
       {/* ── 0. DATASET SUMMARY (AUTO-GENERATED) ── */}
       {/* ── 0. WHAT THIS DATASET IS ABOUT ── */}
@@ -35,7 +35,7 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
         <section className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
           <div className="flex flex-col gap-5">
             <div>
-              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+              <h2 className={`text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2 ${isAr ? 'flex-row-reverse' : ''}`}>
                 <Lightbulb className="w-4 h-4 text-amber-500" />
                 {isAr ? "ما هي هذه البيانات" : "What This Dataset Is About"}
               </h2>
@@ -43,7 +43,7 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
             </div>
             <div className="flex flex-col md:flex-row gap-5 pt-4 border-t border-gray-100">
               <div className="flex-1">
-                <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                <h2 className={`text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2 ${isAr ? 'flex-row-reverse' : ''}`}>
                   <ShieldCheck className="w-4 h-4 text-emerald-500" />
                   {isAr ? "جودة البيانات" : "Data Quality"}
                 </h2>
@@ -56,7 +56,7 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
                     stats.upload_summary.data_readiness === "Some cleaning recommended" ? "bg-amber-50 text-amber-700 border-amber-200" :
                     "bg-red-50 text-red-700 border-red-200"
                   }`}>
-                    <CheckCircle2 className="w-3 h-3 inline mr-1" />
+                    <CheckCircle2 className={`w-3 h-3 inline ${isAr ? 'ml-1' : 'mr-1'}`} />
                     {stats.upload_summary.data_readiness}
                   </span>
                 </div>
@@ -70,8 +70,8 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
                 </h2>
                 <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {stats.upload_summary.key_observations.map((obs: string, i: number) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-gray-700 bg-gray-50/50 p-2.5 rounded-lg border border-gray-100">
-                      <span className="text-blue-500 mt-0.5 shrink-0 font-bold">▸</span>
+                    <li key={i} className={`flex items-start gap-2 text-sm text-gray-700 bg-gray-50/50 p-2.5 rounded-lg border border-gray-100 ${isAr ? 'flex-row-reverse text-right' : ''}`}>
+                      <span className="text-blue-500 mt-0.5 shrink-0 font-bold">{isAr ? '◂' : '▸'}</span>
                       <span>{obs}</span>
                     </li>
                   ))}
@@ -98,17 +98,17 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
       )}
 
       {/* ── 1. OVERVIEW STRIP ── */}
-      <section className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-wrap lg:flex-nowrap items-center justify-between gap-4">
-        <div className="flex items-center gap-6 divide-x divide-gray-100">
+      <section className={`bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex flex-wrap lg:flex-nowrap items-center justify-between gap-4 ${isAr ? 'flex-row-reverse' : ''}`}>
+        <div className={`flex items-center gap-6 ${isAr ? 'divide-x-reverse' : ''} divide-x divide-gray-100`}>
           <div className="flex flex-col px-4">
             <span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">{isAr ? "الصفوف" : "Rows"}</span>
             <span className="text-xl font-bold text-gray-900">{health.row_count.toLocaleString()}</span>
           </div>
-          <div className="flex flex-col pl-6">
+          <div className={`flex flex-col ${isAr ? 'pr-6' : 'pl-6'}`}>
             <span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">{isAr ? "الأعمدة" : "Columns"}</span>
             <span className="text-xl font-bold text-gray-900">{health.column_count.toLocaleString()}</span>
           </div>
-          <div className="flex flex-col pl-6">
+          <div className={`flex flex-col ${isAr ? 'pr-6' : 'pl-6'}`}>
             <span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">{isAr ? "حقول البيانات" : "Data Fields"}</span>
             <div className="flex items-center gap-3 mt-1">
                <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded flex items-center gap-1"><Hash className="w-3 h-3"/> {health.numeric_count}</span>
@@ -123,11 +123,11 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
              <span className="text-[10px] text-gray-500 font-semibold">{isAr ? "نقص" : "Missing"}</span>
              <span className={`text-sm font-bold ${health.missing_pct > 5 ? 'text-amber-500' : 'text-emerald-500'}`}>{health.missing_pct}%</span>
            </div>
-           <div className="flex flex-col items-center px-3 border-l border-gray-200">
+           <div className={`flex flex-col items-center px-3 ${isAr ? 'border-r' : 'border-l'} border-gray-200`}>
              <span className="text-[10px] text-gray-500 font-semibold">{isAr ? "تكرار" : "Duplicates"}</span>
              <span className={`text-sm font-bold ${health.duplicate_pct > 5 ? 'text-amber-500' : 'text-emerald-500'}`}>{health.duplicate_pct}%</span>
            </div>
-           <div className="flex flex-col items-center px-3 border-l border-gray-200">
+           <div className={`flex flex-col items-center px-3 ${isAr ? 'border-r' : 'border-l'} border-gray-200`}>
              <span className="text-[10px] text-gray-500 font-semibold">{isAr ? "الجودة" : "Quality"}</span>
              <span className={`text-sm font-bold ${health.quality_score > 90 ? 'text-emerald-600' : 'text-amber-600'}`}>{health.quality_score}%</span>
            </div>
@@ -137,7 +137,7 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
       {/* ── 2. KEY TAKEAWAYS ── */}
       {key_takeaways && key_takeaways.length > 0 && (
         <section>
-          <SectionHeader icon={<Lightbulb className="w-4 h-4 text-yellow-500" />} title={isAr ? "الاستنتاجات الرئيسية" : "Key Takeaways"} />
+          <SectionHeader icon={<Lightbulb className="w-4 h-4 text-yellow-500" />} title={isAr ? "الاستنتاجات الرئيسية" : "Key Takeaways"} isAr={isAr} />
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
             <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {key_takeaways.map((takeaway: string, idx: number) => (
@@ -156,7 +156,7 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
       {/* ── 3. DATA QUALITY ── */}
       {quality_metrics && quality_metrics.length > 0 && (
         <section>
-          <SectionHeader icon={<ShieldCheck className="w-4 h-4 text-emerald-500" />} title={isAr ? "جودة البيانات حسب العمود" : "Data Quality by Column"} />
+          <SectionHeader icon={<ShieldCheck className="w-4 h-4 text-emerald-500" />} title={isAr ? "جودة البيانات حسب العمود" : "Data Quality by Column"} isAr={isAr} />
           <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                {quality_metrics.map((qm: any, idx: number) => (
@@ -178,7 +178,7 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
       {/* ── 4. ANOMALIES ── */}
       {anomalies && anomalies.length > 0 && (
         <section>
-          <SectionHeader icon={<Zap className="w-4 h-4 text-red-500" />} title={isAr ? "قيم غير معتادة" : "Unusual Values"} />
+          <SectionHeader icon={<Zap className="w-4 h-4 text-red-500" />} title={isAr ? "قيم غير معتادة" : "Unusual Values"} isAr={isAr} />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {anomalies.map((anom: any, idx: number) => (
               <motion.div key={idx} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm relative overflow-hidden flex flex-col justify-center">
@@ -216,7 +216,7 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
       {/* ── 5. TIME TRENDS ── */}
       {dtCols.length > 0 && (
         <section>
-          <SectionHeader icon={<Clock className="w-4 h-4 text-emerald-500" />} title={isAr ? "اتجاهات الوقت" : "Time Profiling"} />
+          <SectionHeader icon={<Clock className="w-4 h-4 text-emerald-500" />} title={isAr ? "اتجاهات الوقت" : "Time Profiling"} isAr={isAr} />
           <div className="grid grid-cols-1 gap-4">
             {dtCols.map(([name, data]: any) => (
               <div key={name} className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col lg:flex-row gap-6">
@@ -224,7 +224,7 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
                     <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2"><Clock className="w-4 h-4 text-emerald-500"/> {name}</h3>
                     <div className="mt-4 flex flex-col gap-3">
                        <div>
-                         <span className="text-[10px] text-gray-400 uppercase tracking-widest block mb-0.5">Coverage</span>
+                         <span className="text-[10px] text-gray-400 uppercase tracking-widest block mb-0.5">{isAr ? "التغطية" : "Coverage"}</span>
                          <span className="text-xs font-semibold text-gray-700">{data.stats.min} <span className="text-gray-400 mx-1">→</span> {data.stats.max}</span>
                        </div>
                        {data.insight && (
@@ -245,7 +245,7 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
                         </LineChart>
                       </ResponsiveContainer>
                     ) : (
-                      <div className="h-full flex items-center justify-center text-gray-400 text-sm">No trend data</div>
+                      <div className="h-full flex items-center justify-center text-gray-400 text-sm">{isAr ? "لا توجد بيانات اتجاه" : "No trend data"}</div>
                     )}
                  </div>
               </div>
@@ -257,7 +257,7 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
       {/* ── 6. NUMERIC PROFILING ── */}
       {numericCols.length > 0 && (
         <section>
-          <SectionHeader icon={<Hash className="w-4 h-4 text-blue-500" />} title={isAr ? "التوزيع الرقمي" : "Numeric Distribution"} />
+          <SectionHeader icon={<Hash className="w-4 h-4 text-blue-500" />} title={isAr ? "التوزيع الرقمي" : "Numeric Distribution"} isAr={isAr} />
           <div className="flex flex-col gap-4">
             {numericCols.map(([name, data]: any) => (
               <NumericAccordion key={name} name={name} data={data} isAr={isAr} />
@@ -269,13 +269,13 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
       {/* ── 7. CATEGORICAL COMPOSITION ── */}
       {catCols.length > 0 && (
         <section>
-          <SectionHeader icon={<List className="w-4 h-4 text-amber-500" />} title={isAr ? "توزيع الفئات" : "Category Distribution"} />
+          <SectionHeader icon={<List className="w-4 h-4 text-amber-500" />} title={isAr ? "توزيع الفئات" : "Category Distribution"} isAr={isAr} />
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
             {catCols.map(([name, data]: any) => (
               <div key={name} className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col h-[320px]">
                 <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
                   <h3 className="font-bold text-gray-900 truncate">{name}</h3>
-                  <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 uppercase tracking-wider">Categorical</span>
+                  <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 uppercase tracking-wider">{isAr ? "فئوي" : "Categorical"}</span>
                 </div>
                 
                 <div className="flex-1 w-full min-h-0 relative mb-4">
@@ -293,7 +293,7 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-xs">No data</div>
+                    <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-xs">{isAr ? "لا توجد بيانات" : "No data"}</div>
                   )}
                 </div>
                 
@@ -312,7 +312,7 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
       {/* ── 8. RELATIONSHIPS (SCATTER + HEATMAP) ── */}
       {correlations && correlations.length > 0 && (
         <section>
-          <SectionHeader icon={<Activity className="w-4 h-4 text-purple-500" />} title={isAr ? "الترابط بين الأعمدة" : "Relationships & Correlations"} />
+          <SectionHeader icon={<Activity className="w-4 h-4 text-purple-500" />} title={isAr ? "الترابط بين الأعمدة" : "Relationships & Correlations"} isAr={isAr} />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             
             {/* Scatter Plots */}
@@ -345,7 +345,7 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
 
             {/* Correlation List (Alternative to complex matrix if space is constrained) */}
             <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm h-[320px] overflow-y-auto">
-               <h3 className="font-bold text-gray-900 text-sm mb-4 border-b border-gray-100 pb-2">Strongest Correlations</h3>
+               <h3 className="font-bold text-gray-900 text-sm mb-4 border-b border-gray-100 pb-2">{isAr ? "أقوى الارتباطات" : "Strongest Correlations"}</h3>
                <div className="flex flex-col gap-2">
                  {correlations.map((c: any, i: number) => (
                    <div key={i} className="flex items-center justify-between p-2 rounded hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100">
@@ -374,9 +374,9 @@ export function DatasetProfiler({ lang, stats }: { lang: Language; stats: any })
 
 /* ── Sub-components ── */
 
-function SectionHeader({ icon, title }: { icon: React.ReactNode, title: string }) {
+function SectionHeader({ icon, title, isAr = false }: { icon: React.ReactNode, title: string, isAr?: boolean }) {
   return (
-    <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2 pl-1">
+    <h2 className={`text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2 ${isAr ? 'flex-row-reverse pr-1' : 'pl-1'}`}>
       {icon}
       {title}
     </h2>
@@ -393,13 +393,13 @@ function NumericAccordion({ name, data, isAr }: { name: string, data: any, isAr:
           <div className="flex items-center gap-3">
              <Hash className="w-4 h-4 text-blue-500" />
              <span className="font-bold text-gray-900">{name}</span>
-             {data.missing > 0 && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">{data.missing_pct}% Missing</span>}
+             {data.missing > 0 && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">{data.missing_pct}% {isAr ? "مفقود" : "Missing"}</span>}
           </div>
           <div className="flex items-center gap-4">
              {/* Mini stats preview */}
              <div className="hidden md:flex items-center gap-4 text-xs">
-                <span className="text-gray-500">Mean: <strong className="text-gray-800">{Number(data.stats.mean).toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong></span>
-                <span className="text-gray-500">Max: <strong className="text-gray-800">{Number(data.stats.max).toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong></span>
+                <span className="text-gray-500">{isAr ? "المتوسط:" : "Mean:"} <strong className="text-gray-800">{Number(data.stats.mean).toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong></span>
+                <span className="text-gray-500">{isAr ? "الأقصى:" : "Max:"} <strong className="text-gray-800">{Number(data.stats.max).toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong></span>
              </div>
              {isOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
           </div>
@@ -416,17 +416,17 @@ function NumericAccordion({ name, data, isAr }: { name: string, data: any, isAr:
                    {/* Custom CSS Box Plot */}
                    {data.stats && (
                      <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                       <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-4">Distribution Spread (Box Plot)</span>
+                       <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-4">{isAr ? "انتشار التوزيع" : "Distribution Spread (Box Plot)"}</span>
                        <CustomBoxPlot stats={data.stats} />
                      </div>
                    )}
                    
                    {/* Stats Grid */}
                    <div className="grid grid-cols-4 gap-2 text-center">
-                      <StatBlock label="Min" value={data.stats.min} />
-                      <StatBlock label="Q1" value={data.stats.q1} />
-                      <StatBlock label="Median" value={data.stats.median} highlight />
-                      <StatBlock label="Q3" value={data.stats.q3} />
+                      <StatBlock label={isAr ? "أدنى" : "Min"} value={data.stats.min} />
+                      <StatBlock label={isAr ? "الربع1" : "Q1"} value={data.stats.q1} />
+                      <StatBlock label={isAr ? "الوسيط" : "Median"} value={data.stats.median} highlight />
+                      <StatBlock label={isAr ? "الربع3" : "Q3"} value={data.stats.q3} />
                    </div>
                 </div>
 
@@ -443,7 +443,7 @@ function NumericAccordion({ name, data, isAr }: { name: string, data: any, isAr:
                        </BarChart>
                      </ResponsiveContainer>
                    ) : (
-                     <div className="h-full flex items-center justify-center text-gray-400 text-sm">No histogram data</div>
+                     <div className="h-full flex items-center justify-center text-gray-400 text-sm">{isAr ? "لا توجد بيانات توزيع" : "No histogram data"}</div>
                    )}
                 </div>
 

@@ -85,20 +85,19 @@ export function ActionZone({
   const hasHistory = chatHistory.length > 0;
 
   return (
-    <div className="flex flex-col h-full w-full">
+    <div dir={isAr ? "rtl" : "ltr"} className={`flex flex-col h-full w-full ${isAr ? 'text-right' : 'text-left'}`}>
       {/* ── Fixed Header ── */}
-      <div className="flex-shrink-0 p-4 lg:px-8 lg:pt-6 border-b border-gray-100 bg-white">
-        <div className="flex items-start justify-between">
+      <div className="flex-shrink-0 p-4 lg:px-8 lg:pt-6 border-b border-[#E2E8F0] bg-white">
+        <div className={`flex items-start justify-between ${isAr ? 'flex-row-reverse' : ''}`}>
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-3">
-              <img src="/chatlytics_logo.jpg" alt="Chatlytics" className="h-10 w-auto object-contain" onError={(e) => { e.currentTarget.style.display='none'; }} />
-              <h1 className="text-xl font-bold tracking-tight text-gray-900">{t.title}</h1>
+              <h1 className="text-xl font-bold tracking-tight text-[#0A0A0F]">{t.title}</h1>
             </div>
-            <div className="flex items-center gap-2 text-gray-500">
+            <div className="flex items-center gap-2 text-[#64748B]">
               <p className="text-xs">{t.subtitle}</p>
-              <span className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full text-[10px] font-medium border border-emerald-200">
+              <span className="flex items-center gap-1 text-[#0EA5E9] bg-sky-50 px-1.5 py-0.5 rounded-full text-[10px] font-medium border border-sky-200">
                 <CheckCircle2 className="w-2.5 h-2.5" />
-                Deterministic
+                {isAr ? "حتمي" : "Deterministic"}
               </span>
             </div>
           </div>
@@ -140,22 +139,21 @@ export function ActionZone({
 
       {/* ── Upload + Clear when dataset loaded ── */}
       {stats && (
-        <div className="flex-shrink-0 px-4 lg:px-8 pt-3 flex items-center gap-3">
+        <div className="flex-shrink-0 px-4 lg:px-8 pt-3 pb-1 flex items-center gap-2">
           <input type="file" accept=".csv" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
           <button
             onClick={() => !uploading && fileInputRef.current?.click()}
-            className="text-[10px] text-gray-400 hover:text-blue-600 transition-colors flex items-center gap-1"
+            className="flex items-center gap-2 px-4 py-2 text-[12px] font-semibold text-[#0A0A0F] bg-[#F1F5F9] hover:bg-sky-50 border border-[#E2E8F0] hover:border-[#0EA5E9]/40 rounded-lg transition-all hover:shadow-sm"
           >
-            <UploadCloud className="w-3 h-3" />
-            {isAr ? "تغيير مجموعة البيانات" : "Change dataset"}
+            <UploadCloud className="w-4 h-4 text-[#0EA5E9]" />
+            {isAr ? "تغيير مجموعة البيانات" : "Change Dataset"}
           </button>
-          <span className="text-gray-200">|</span>
           <button
             onClick={onClearDataset}
-            className="text-[10px] text-gray-400 hover:text-red-500 transition-colors flex items-center gap-1"
+            className="flex items-center gap-2 px-4 py-2 text-[12px] font-semibold text-[#64748B] bg-white hover:bg-red-50 border border-[#E2E8F0] hover:border-red-300 hover:text-red-600 rounded-lg transition-all hover:shadow-sm"
           >
-            <Trash2 className="w-3 h-3" />
-            {isAr ? "مسح البيانات" : "Clear dataset"}
+            <Trash2 className="w-4 h-4" />
+            {isAr ? "مسح البيانات" : "Clear Dataset"}
           </button>
         </div>
       )}
@@ -300,7 +298,7 @@ export function ActionZone({
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex gap-2.5"
+            className={`flex gap-2.5 ${isAr ? 'flex-row-reverse' : ''}`}
           >
             <div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
               <Bot className="w-3.5 h-3.5 text-white" />
@@ -325,7 +323,7 @@ export function ActionZone({
                 onKeyDown={handleKeyDown}
                 placeholder={!stats ? (isAr ? "يرجى تحميل مجموعة بيانات أولاً..." : "Please upload a dataset first...") : (isAr ? "اسأل أو تابع التحليل السابق..." : "Ask a question or continue your analysis...")}
                 disabled={loading || !stats}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed ${isAr ? 'pl-12' : 'pr-12'}`}
                 rows={1}
                 dir={isAr && !question ? "rtl" : "auto"}
               />

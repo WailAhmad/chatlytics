@@ -21,7 +21,7 @@ export function InsightZone({ lang, stats, response }: { lang: Language; stats: 
       <div className="flex flex-col h-full items-center justify-center p-10 w-full bg-[#FAFAFA]">
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5 }} className="flex flex-col items-center justify-center max-w-md text-center">
           <div className="w-64 h-64 bg-white border border-gray-100 shadow-xl rounded-3xl flex items-center justify-center p-8 mb-8">
-            <img src="/chatlytics_logo.jpg" alt="Chatlytics" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.parentElement!.innerHTML='<h2 class="font-bold tracking-widest text-4xl text-gray-900">CHATLYTICS</h2>'; }} />
+            <img src="/chatlytics-logo.png" alt="Chatlytics" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.parentElement!.innerHTML='<h2 class="font-bold tracking-widest text-4xl text-gray-900">CHATLYTICS</h2>'; }} />
           </div>
           <h2 className="text-xl font-bold text-gray-900 tracking-tight">{t.emptyStateTitle}</h2>
           <p className="text-base text-gray-500 mt-2">{t.emptyStateSub}</p>
@@ -38,14 +38,14 @@ export function InsightZone({ lang, stats, response }: { lang: Language; stats: 
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 lg:p-6 w-full bg-[#FAFAFA]">
+    <div dir={isAr ? "rtl" : "ltr"} className={`flex flex-col gap-4 p-4 lg:p-6 w-full bg-[#FAFAFA] ${isAr ? 'text-right' : 'text-left'}`}>
       {/* Section Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+        <h2 className={`text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2 ${isAr ? 'flex-row-reverse' : ''}`}>
           {isAr ? "رؤى الإجابة" : "Answer Insights"}
-          {layout.answerType === "python" && <span className="bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-0.5 rounded text-[10px] ml-2 flex items-center gap-1"><Code2 className="w-3 h-3"/> {isAr ? "محسوب" : "Calculated"}</span>}
-          {layout.answerType === "llm" && <span className="bg-purple-50 text-purple-600 border border-purple-200 px-2 py-0.5 rounded text-[10px] ml-2 flex items-center gap-1">✨ {isAr ? "شرح بواسطة الذكاء الاصطناعي" : "Explained by AI"}</span>}
-          {layout.answerType === "hybrid" && <span className="bg-blue-50 text-blue-600 border border-blue-200 px-2 py-0.5 rounded text-[10px] ml-2 flex items-center gap-1"><Search className="w-3 h-3"/> {isAr ? "محسوب ومفسر" : "Calculated + Interpreted"}</span>}
+          {layout.answerType === "python" && <span className={`bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-0.5 rounded text-[10px] ${isAr ? 'mr-2' : 'ml-2'} flex items-center gap-1`}><Code2 className="w-3 h-3"/> {isAr ? "محسوب" : "Calculated"}</span>}
+          {layout.answerType === "llm" && <span className={`bg-purple-50 text-purple-600 border border-purple-200 px-2 py-0.5 rounded text-[10px] ${isAr ? 'mr-2' : 'ml-2'} flex items-center gap-1`}>✨ {isAr ? "شرح بواسطة الذكاء الاصطناعي" : "Explained by AI"}</span>}
+          {layout.answerType === "hybrid" && <span className={`bg-blue-50 text-blue-600 border border-blue-200 px-2 py-0.5 rounded text-[10px] ${isAr ? 'mr-2' : 'ml-2'} flex items-center gap-1`}><Search className="w-3 h-3"/> {isAr ? "محسوب ومفسر" : "Calculated + Interpreted"}</span>}
         </h2>
       </div>
 
@@ -154,7 +154,7 @@ export function InsightZone({ lang, stats, response }: { lang: Language; stats: 
               </div>
               <div className="text-3xl font-black text-gray-900 mb-1">
                 {Number(layout.primaryValue).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                <span className="text-lg text-gray-500 font-medium ml-2">{layout.unit}</span>
+        <span className={`text-lg text-gray-500 font-medium ${isAr ? 'mr-2' : 'ml-2'}`}>{layout.unit}</span>
               </div>
               <p className="text-sm text-gray-500 mt-2">{layout.headline}</p>
             </div>
@@ -179,9 +179,9 @@ export function InsightZone({ lang, stats, response }: { lang: Language; stats: 
 
       {/* AI Insights — always present */}
       <motion.div {...fadeIn} className="bg-blue-50/60 border border-blue-200 rounded-xl p-5">
-        <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-3 flex items-center gap-1.5"><span>✨</span> {isAr ? "رؤى ذكية" : "Insights"}</h4>
+        <h4 className={`text-xs font-bold text-blue-800 uppercase tracking-wider mb-3 flex items-center gap-1.5 ${isAr ? 'flex-row-reverse' : ''}`}><span>✨</span> {isAr ? "رؤى ذكية" : "Insights"}</h4>
         {layout.aiInsights.length > 0 ? (
-          <ul className="space-y-2">{layout.aiInsights.map((ins, i) => <li key={i} className="text-sm text-blue-900 leading-relaxed flex gap-2 items-start"><span className="text-blue-500 mt-0.5 shrink-0">•</span><span>{ins}</span></li>)}</ul>
+          <ul className="space-y-2">{layout.aiInsights.map((ins, i) => <li key={i} className={`text-sm text-blue-900 leading-relaxed flex gap-2 items-start ${isAr ? 'flex-row-reverse text-right' : ''}`}><span className="text-blue-500 mt-0.5 shrink-0">•</span><span>{ins}</span></li>)}</ul>
         ) : (
           /* Deterministic fallback insights when LLM insights are missing */
           <ul className="space-y-2">
@@ -210,16 +210,16 @@ export function InsightZone({ lang, stats, response }: { lang: Language; stats: 
       {/* Key Facts */}
       {layout.keyFacts.length > 0 && (
         <motion.div {...fadeIn} className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-          <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5"><span>📋</span> {isAr ? "حقائق رئيسية" : "Key Facts"}</h4>
-          <ul className="space-y-2">{layout.keyFacts.map((f, i) => <li key={i} className="text-sm text-gray-700 leading-relaxed flex gap-2 items-start"><span className="text-blue-400 mt-0.5 shrink-0 font-bold">▸</span><span>{f}</span></li>)}</ul>
+          <h4 className={`text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5 ${isAr ? 'flex-row-reverse' : ''}`}><span>📋</span> {isAr ? "حقائق رئيسية" : "Key Facts"}</h4>
+          <ul className="space-y-2">{layout.keyFacts.map((f, i) => <li key={i} className={`text-sm text-gray-700 leading-relaxed flex gap-2 items-start ${isAr ? 'flex-row-reverse text-right' : ''}`}><span className="text-blue-400 mt-0.5 shrink-0 font-bold">{isAr ? '◂' : '▸'}</span><span>{f}</span></li>)}</ul>
         </motion.div>
       )}
 
       {/* Anomalies */}
       {layout.anomalies.length > 0 && (
         <motion.div {...fadeIn} className="bg-amber-50 border border-amber-200 rounded-xl p-5">
-          <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider mb-2 flex items-center gap-1.5"><span>⚠️</span> {isAr ? "ملاحظات" : "Notes"}</h4>
-          <ul className="space-y-1.5">{layout.anomalies.map((a, i) => <li key={i} className="text-sm text-amber-900 leading-relaxed flex gap-2 items-start"><span className="text-amber-500 mt-0.5">⚡</span><span>{a}</span></li>)}</ul>
+          <h4 className={`text-xs font-bold text-amber-800 uppercase tracking-wider mb-2 flex items-center gap-1.5 ${isAr ? 'flex-row-reverse' : ''}`}><span>⚠️</span> {isAr ? "ملاحظات" : "Notes"}</h4>
+          <ul className="space-y-1.5">{layout.anomalies.map((a, i) => <li key={i} className={`text-sm text-amber-900 leading-relaxed flex gap-2 items-start ${isAr ? 'flex-row-reverse text-right' : ''}`}><span className="text-amber-500 mt-0.5">⚡</span><span>{a}</span></li>)}</ul>
         </motion.div>
       )}
 
